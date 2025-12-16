@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import './Portfolio.css';
+import React, { useState, useEffect } from "react";
+import "./Portfolio.css";
 
 export default function Portfolio() {
   const [positions, setPositions] = useState([]);
   const [summary, setSummary] = useState({
     totalValue: 0,
     totalPnL: 0,
-    totalPnLPercent: 0
+    totalPnLPercent: 0,
   });
 
   // Mock data - replace with your API call
@@ -14,37 +14,37 @@ export default function Portfolio() {
     const mockPositions = [
       {
         id: 1,
-        symbol: 'AAPL',
-        name: 'Apple Inc.',
-        positionType: 'LONG',
+        symbol: "AAPL",
+        name: "Apple Inc.",
+        positionType: "LONG",
         quantity: 100,
-        entryPrice: 150.00,
-        currentPrice: 165.50,
-        marketValue: 16550.00,
-        costBasis: 15000.00
+        entryPrice: 150.0,
+        currentPrice: 165.5,
+        marketValue: 16550.0,
+        costBasis: 15000.0,
       },
       {
         id: 2,
-        symbol: 'TSLA',
-        name: 'Tesla Inc.',
-        positionType: 'SHORT',
+        symbol: "TSLA",
+        name: "Tesla Inc.",
+        positionType: "SHORT",
         quantity: 50,
-        entryPrice: 250.00,
-        currentPrice: 235.00,
-        marketValue: 11750.00,
-        costBasis: 12500.00
+        entryPrice: 250.0,
+        currentPrice: 235.0,
+        marketValue: 11750.0,
+        costBasis: 12500.0,
       },
       {
         id: 3,
-        symbol: 'MSFT',
-        name: 'Microsoft Corporation',
-        positionType: 'LONG',
+        symbol: "MSFT",
+        name: "Microsoft Corporation",
+        positionType: "LONG",
         quantity: 75,
-        entryPrice: 300.00,
-        currentPrice: 285.00,
-        marketValue: 21375.00,
-        costBasis: 22500.00
-      }
+        entryPrice: 300.0,
+        currentPrice: 285.0,
+        marketValue: 21375.0,
+        costBasis: 22500.0,
+      },
     ];
 
     setPositions(mockPositions);
@@ -52,7 +52,7 @@ export default function Portfolio() {
   }, []);
 
   const calculatePnL = (position) => {
-    if (position.positionType === 'LONG') {
+    if (position.positionType === "LONG") {
       return position.marketValue - position.costBasis;
     } else {
       return position.costBasis - position.marketValue;
@@ -73,19 +73,19 @@ export default function Portfolio() {
     setSummary({
       totalValue,
       totalPnL,
-      totalPnLPercent
+      totalPnLPercent,
     });
   };
 
   const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
     }).format(value);
   };
 
   const formatPercent = (value) => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+    return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
 
   return (
@@ -95,17 +95,27 @@ export default function Portfolio() {
         <div className="portfolio-summary">
           <div className="summary-card">
             <span className="summary-label">Total Value</span>
-            <span className="summary-value">{formatCurrency(summary.totalValue)}</span>
+            <span className="summary-value">
+              {formatCurrency(summary.totalValue)}
+            </span>
           </div>
           <div className="summary-card">
             <span className="summary-label">Total P&L</span>
-            <span className={`summary-value ${summary.totalPnL >= 0 ? 'positive' : 'negative'}`}>
+            <span
+              className={`summary-value ${
+                summary.totalPnL >= 0 ? "positive" : "negative"
+              }`}
+            >
               {formatCurrency(summary.totalPnL)}
             </span>
           </div>
           <div className="summary-card">
             <span className="summary-label">Total Return</span>
-            <span className={`summary-value ${summary.totalPnLPercent >= 0 ? 'positive' : 'negative'}`}>
+            <span
+              className={`summary-value ${
+                summary.totalPnLPercent >= 0 ? "positive" : "negative"
+              }`}
+            >
               {formatPercent(summary.totalPnLPercent)}
             </span>
           </div>
@@ -139,18 +149,34 @@ export default function Portfolio() {
                   </td>
                   <td className="name-cell">{position.name}</td>
                   <td>
-                    <span className={`position-badge ${position.positionType.toLowerCase()}`}>
+                    <span
+                      className={`position-badge ${position.positionType.toLowerCase()}`}
+                    >
                       {position.positionType}
                     </span>
                   </td>
                   <td className="align-right">{position.quantity}</td>
-                  <td className="align-right">{formatCurrency(position.entryPrice)}</td>
-                  <td className="align-right">{formatCurrency(position.currentPrice)}</td>
-                  <td className="align-right">{formatCurrency(position.marketValue)}</td>
-                  <td className={`align-right ${pnl >= 0 ? 'positive' : 'negative'}`}>
+                  <td className="align-right">
+                    {formatCurrency(position.entryPrice)}
+                  </td>
+                  <td className="align-right">
+                    {formatCurrency(position.currentPrice)}
+                  </td>
+                  <td className="align-right">
+                    {formatCurrency(position.marketValue)}
+                  </td>
+                  <td
+                    className={`align-right ${
+                      pnl >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     {formatCurrency(pnl)}
                   </td>
-                  <td className={`align-right ${pnlPercent >= 0 ? 'positive' : 'negative'}`}>
+                  <td
+                    className={`align-right ${
+                      pnlPercent >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     {formatPercent(pnlPercent)}
                   </td>
                 </tr>

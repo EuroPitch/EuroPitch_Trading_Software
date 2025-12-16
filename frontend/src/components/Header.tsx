@@ -34,7 +34,9 @@ const Header = () => {
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+              className={({ isActive }) =>
+                isActive ? "nav-link active" : "nav-link"
+              }
               onClick={() => setMenuOpen(false)}
             >
               {item.label}

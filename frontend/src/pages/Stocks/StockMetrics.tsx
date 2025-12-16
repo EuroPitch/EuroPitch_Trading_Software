@@ -1,51 +1,62 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import StockDetailModal from './StockDetailModal';
-import ComparisonPanel from './ComparisonPanel';
-import './StockMetrics.css';
+import React, { useState, useEffect, useMemo } from "react";
+import StockDetailModal from "./StockDetailModal";
+import ComparisonPanel from "./ComparisonPanel";
+import "./StockMetrics.css";
 
-const UNIVERSE = ['AAPL', 'MSFT', 'JPM', 'JNJ', 'TSLA']; // extend this for your competition
+const UNIVERSE = ["AAPL", "MSFT", "JPM", "JNJ", "TSLA"]; // extend this for your competition
 
 export default function StockMetrics() {
   const [stocks, setStocks] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'marketCap', direction: 'desc' });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortConfig, setSortConfig] = useState({
+    key: "marketCap",
+    direction: "desc",
+  });
   const [selectedStock, setSelectedStock] = useState(null);
   const [compareMode, setCompareMode] = useState(false);
   const [selectedForCompare, setSelectedForCompare] = useState([]);
   const [visibleColumns, setVisibleColumns] = useState([
-    'symbol', 'name', 'price', 'change', 'changePercent', 'marketCap',
-    'peRatio', 'volume', 'rsi', 'dividendYield'
+    "symbol",
+    "name",
+    "price",
+    "change",
+    "changePercent",
+    "marketCap",
+    "peRatio",
+    "volume",
+    "rsi",
+    "dividendYield",
   ]);
   const [showColumnCustomizer, setShowColumnCustomizer] = useState(false);
-  const [sectorFilter, setSectorFilter] = useState('all');
+  const [sectorFilter, setSectorFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  const API_BASE_URL = 'https://europitch-trading-prices.vercel.app'; // change if needed
+  const API_BASE_URL = "https://europitch-trading-prices.vercel.app"; // change if needed
 
   const allColumns = [
-    { key: 'symbol', label: 'Symbol', format: 'text' },
-    { key: 'name', label: 'Name', format: 'text' },
-    { key: 'sector', label: 'Sector', format: 'text' },
-    { key: 'price', label: 'Price', format: 'currency' },
-    { key: 'change', label: 'Change', format: 'currency' },
-    { key: 'changePercent', label: 'Change %', format: 'percent' },
-    { key: 'marketCap', label: 'Market Cap', format: 'marketCap' },
-    { key: 'volume', label: 'Volume', format: 'volume' },
-    { key: 'peRatio', label: 'P/E', format: 'decimal' },
-    { key: 'pbRatio', label: 'P/B', format: 'decimal' },
-    { key: 'pegRatio', label: 'PEG', format: 'decimal' },
-    { key: 'dividendYield', label: 'Div Yield', format: 'percent' },
-    { key: 'roe', label: 'ROE', format: 'percent' },
-    { key: 'roa', label: 'ROA', format: 'percent' },
-    { key: 'debtToEquity', label: 'D/E', format: 'decimal' },
-    { key: 'currentRatio', label: 'Current Ratio', format: 'decimal' },
-    { key: 'grossMargin', label: 'Gross Margin', format: 'percent' },
-    { key: 'operatingMargin', label: 'Op Margin', format: 'percent' },
-    { key: 'netMargin', label: 'Net Margin', format: 'percent' },
-    { key: 'revenueGrowth', label: 'Rev Growth', format: 'percent' },
-    { key: 'earningsGrowth', label: 'Earnings Growth', format: 'percent' },
-    { key: 'rsi', label: 'RSI', format: 'decimal' },
-    { key: 'beta', label: 'Beta', format: 'decimal' }
+    { key: "symbol", label: "Symbol", format: "text" },
+    { key: "name", label: "Name", format: "text" },
+    { key: "sector", label: "Sector", format: "text" },
+    { key: "price", label: "Price", format: "currency" },
+    { key: "change", label: "Change", format: "currency" },
+    { key: "changePercent", label: "Change %", format: "percent" },
+    { key: "marketCap", label: "Market Cap", format: "marketCap" },
+    { key: "volume", label: "Volume", format: "volume" },
+    { key: "peRatio", label: "P/E", format: "decimal" },
+    { key: "pbRatio", label: "P/B", format: "decimal" },
+    { key: "pegRatio", label: "PEG", format: "decimal" },
+    { key: "dividendYield", label: "Div Yield", format: "percent" },
+    { key: "roe", label: "ROE", format: "percent" },
+    { key: "roa", label: "ROA", format: "percent" },
+    { key: "debtToEquity", label: "D/E", format: "decimal" },
+    { key: "currentRatio", label: "Current Ratio", format: "decimal" },
+    { key: "grossMargin", label: "Gross Margin", format: "percent" },
+    { key: "operatingMargin", label: "Op Margin", format: "percent" },
+    { key: "netMargin", label: "Net Margin", format: "percent" },
+    { key: "revenueGrowth", label: "Rev Growth", format: "percent" },
+    { key: "earningsGrowth", label: "Earnings Growth", format: "percent" },
+    { key: "rsi", label: "RSI", format: "decimal" },
+    { key: "beta", label: "Beta", format: "decimal" },
   ];
 
   // Fetch on mount + background refresh every 5s without UI flicker
@@ -53,67 +64,74 @@ export default function StockMetrics() {
     let isFirst = true;
     let intervalId;
 
-  const fetchStocks = async () => {
-  try {
-    if (isFirst) setLoading(true);
+    const fetchStocks = async () => {
+      try {
+        if (isFirst) setLoading(true);
 
-    const params = new URLSearchParams();
-    UNIVERSE.forEach(sym => params.append('symbols', sym));
+        const params = new URLSearchParams();
+        UNIVERSE.forEach((sym) => params.append("symbols", sym));
 
-    const res = await fetch(`${API_BASE_URL}/equities/quotes?${params.toString()}`);
-    if (!res.ok) {
-      throw new Error(`HTTP error ${res.status}`);
-    }
+        const res = await fetch(
+          `${API_BASE_URL}/equities/quotes?${params.toString()}`
+        );
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}`);
+        }
 
-    const json = await res.json();
-    const rows = Object.values(json.data || {});
+        const json = await res.json();
+        const rows = Object.values(json.data || {});
 
-  const stocksArray = rows.map((row: any, idx: number) => ({
-      id: idx + 1,
-      symbol: row.symbol || '',
-      name: row.name || row.symbol || '',
-      sector: row.sector || 'Unknown',
-      price: row.price || 0,
-      change: row.price && row.previous_close
-        ? row.price - row.previous_close
-        : 0,
-      changePercent: row.price && row.previous_close
-        ? ((row.price - row.previous_close) / row.previous_close) * 100
-        : 0,
-      marketCap: row.market_cap || 0,
-      volume: row.volume || 0,
-      peRatio: row.pe_ratio || null,
-      pbRatio: row.pb_ratio || null,
-      pegRatio: row.peg_ratio || null,
-      dividendYield: row.dividend_yield ? row.dividend_yield * 100 : null,
-      roe: row.roe ? row.roe * 100 : null,
-      roa: row.roa ? row.roa * 100 : null,
-      debtToEquity: row.debt_to_equity || null,
-      currentRatio: row.current_ratio || null,
-      quickRatio: null,
-      grossMargin: row.gross_margin ? row.gross_margin * 100 : null,
-      operatingMargin: row.operating_margin ? row.operating_margin * 100 : null,
-      netMargin: row.net_margin ? row.net_margin * 100 : null,
-      revenueGrowth: row.revenue_growth ? row.revenue_growth * 100 : null,
-      earningsGrowth: row.earnings_growth ? row.earnings_growth * 100 : null,
-      rsi: row.rsi || null,
-      beta: row.beta || null,
-      fiftyTwoWeekHigh: row['52_week_high'] || null,
-      fiftyTwoWeekLow: row['52_week_low'] || null,
-      avgVolume: null
-    }));
+        const stocksArray = rows.map((row: any, idx: number) => ({
+          id: idx + 1,
+          symbol: row.symbol || "",
+          name: row.name || row.symbol || "",
+          sector: row.sector || "Unknown",
+          price: row.price || 0,
+          change:
+            row.price && row.previous_close
+              ? row.price - row.previous_close
+              : 0,
+          changePercent:
+            row.price && row.previous_close
+              ? ((row.price - row.previous_close) / row.previous_close) * 100
+              : 0,
+          marketCap: row.market_cap || 0,
+          volume: row.volume || 0,
+          peRatio: row.pe_ratio || null,
+          pbRatio: row.pb_ratio || null,
+          pegRatio: row.peg_ratio || null,
+          dividendYield: row.dividend_yield ? row.dividend_yield * 100 : null,
+          roe: row.roe ? row.roe * 100 : null,
+          roa: row.roa ? row.roa * 100 : null,
+          debtToEquity: row.debt_to_equity || null,
+          currentRatio: row.current_ratio || null,
+          quickRatio: null,
+          grossMargin: row.gross_margin ? row.gross_margin * 100 : null,
+          operatingMargin: row.operating_margin
+            ? row.operating_margin * 100
+            : null,
+          netMargin: row.net_margin ? row.net_margin * 100 : null,
+          revenueGrowth: row.revenue_growth ? row.revenue_growth * 100 : null,
+          earningsGrowth: row.earnings_growth
+            ? row.earnings_growth * 100
+            : null,
+          rsi: row.rsi || null,
+          beta: row.beta || null,
+          fiftyTwoWeekHigh: row["52_week_high"] || null,
+          fiftyTwoWeekLow: row["52_week_low"] || null,
+          avgVolume: null,
+        }));
 
-    setStocks(stocksArray);
-  } catch (err) {
-    console.error('Failed to load market data', err);
-  } finally {
-    if (isFirst) {
-      setLoading(false);
-      isFirst = false;
-    }
-  }
-};
-
+        setStocks(stocksArray);
+      } catch (err) {
+        console.error("Failed to load market data", err);
+      } finally {
+        if (isFirst) {
+          setLoading(false);
+          isFirst = false;
+        }
+      }
+    };
 
     // Initial load
     fetchStocks();
@@ -125,15 +143,16 @@ export default function StockMetrics() {
     };
   }, [API_BASE_URL]);
 
-  const sectors = ['all', ...new Set(stocks.map(s => s.sector))];
+  const sectors = ["all", ...new Set(stocks.map((s) => s.sector))];
 
   const filteredAndSortedStocks = useMemo(() => {
-    let filtered = stocks.filter(stock => {
+    let filtered = stocks.filter((stock) => {
       const matchesSearch =
         stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
         stock.name.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesSector = sectorFilter === 'all' || stock.sector === sectorFilter;
+      const matchesSector =
+        sectorFilter === "all" || stock.sector === sectorFilter;
 
       return matchesSearch && matchesSector;
     });
@@ -143,8 +162,8 @@ export default function StockMetrics() {
         const aVal = a[sortConfig.key];
         const bVal = b[sortConfig.key];
 
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
         return 0;
       });
     }
@@ -153,40 +172,40 @@ export default function StockMetrics() {
   }, [stocks, searchTerm, sectorFilter, sortConfig]);
 
   const requestSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
     }
     setSortConfig({ key, direction });
   };
 
   const formatValue = (value, format) => {
-    if (value === null || value === undefined) return '-';
+    if (value === null || value === undefined) return "-";
 
     switch (format) {
-      case 'currency':
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
+      case "currency":
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
           minimumFractionDigits: 2,
-          maximumFractionDigits: 2
+          maximumFractionDigits: 2,
         }).format(value);
 
-      case 'marketCap':
+      case "marketCap":
         if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
         if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
         if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
         return `$${value.toFixed(0)}`;
 
-      case 'volume':
+      case "volume":
         if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
         if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`;
         return value.toLocaleString();
 
-      case 'percent':
+      case "percent":
         return `${value.toFixed(2)}%`;
 
-      case 'decimal':
+      case "decimal":
         return value.toFixed(2);
 
       default:
@@ -195,20 +214,20 @@ export default function StockMetrics() {
   };
 
   const getCellClassName = (columnKey, value) => {
-    if (columnKey === 'change' || columnKey === 'changePercent') {
-      return value >= 0 ? 'positive' : 'negative';
+    if (columnKey === "change" || columnKey === "changePercent") {
+      return value >= 0 ? "positive" : "negative";
     }
-    if (columnKey === 'rsi') {
-      if (value > 70) return 'rsi-overbought';
-      if (value < 30) return 'rsi-oversold';
+    if (columnKey === "rsi") {
+      if (value > 70) return "rsi-overbought";
+      if (value < 30) return "rsi-oversold";
     }
-    return '';
+    return "";
   };
 
   const handleCompareToggle = (stockId) => {
-    setSelectedForCompare(prev => {
+    setSelectedForCompare((prev) => {
       if (prev.includes(stockId)) {
-        return prev.filter(id => id !== stockId);
+        return prev.filter((id) => id !== stockId);
       } else if (prev.length < 5) {
         return [...prev, stockId];
       }
@@ -217,10 +236,10 @@ export default function StockMetrics() {
   };
 
   const toggleColumnVisibility = (columnKey) => {
-    setVisibleColumns(prev => {
+    setVisibleColumns((prev) => {
       if (prev.includes(columnKey)) {
-        if (columnKey === 'symbol' || columnKey === 'name') return prev;
-        return prev.filter(key => key !== columnKey);
+        if (columnKey === "symbol" || columnKey === "name") return prev;
+        return prev.filter((key) => key !== columnKey);
       }
       return [...prev, columnKey];
     });
@@ -228,25 +247,25 @@ export default function StockMetrics() {
 
   const exportToCSV = () => {
     const headers = allColumns
-      .filter(col => visibleColumns.includes(col.key))
-      .map(col => col.label);
+      .filter((col) => visibleColumns.includes(col.key))
+      .map((col) => col.label);
 
-    const rows = filteredAndSortedStocks.map(stock =>
+    const rows = filteredAndSortedStocks.map((stock) =>
       allColumns
-        .filter(col => visibleColumns.includes(col.key))
-        .map(col => stock[col.key])
+        .filter((col) => visibleColumns.includes(col.key))
+        .map((col) => stock[col.key])
     );
 
     const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
+      headers.join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `stock-metrics-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `stock-metrics-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
   };
 
@@ -265,10 +284,10 @@ export default function StockMetrics() {
           <h1>Market Metrics & Analysis</h1>
           <div className="header-actions">
             <button
-              className={`btn-compare ${compareMode ? 'active' : ''}`}
+              className={`btn-compare ${compareMode ? "active" : ""}`}
               onClick={() => setCompareMode(!compareMode)}
             >
-              {compareMode ? 'Exit Compare Mode' : 'Compare Stocks'}
+              {compareMode ? "Exit Compare Mode" : "Compare Stocks"}
             </button>
             <button
               className="btn-secondary"
@@ -284,8 +303,20 @@ export default function StockMetrics() {
 
         <div className="filters-row">
           <div className="search-box">
-            <svg className="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M9 17A8 8 0 1 0 9 1a8 8 0 0 0 0 16zM19 19l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              className="search-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="none"
+            >
+              <path
+                d="M9 17A8 8 0 1 0 9 1a8 8 0 0 0 0 16zM19 19l-4.35-4.35"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
             <input
               type="text"
@@ -301,9 +332,9 @@ export default function StockMetrics() {
             value={sectorFilter}
             onChange={(e) => setSectorFilter(e.target.value)}
           >
-            {sectors.map(sector => (
+            {sectors.map((sector) => (
               <option key={sector} value={sector}>
-                {sector === 'all' ? 'All Sectors' : sector}
+                {sector === "all" ? "All Sectors" : sector}
               </option>
             ))}
           </select>
@@ -325,13 +356,13 @@ export default function StockMetrics() {
               </button>
             </div>
             <div className="column-options">
-              {allColumns.map(column => (
+              {allColumns.map((column) => (
                 <label key={column.key} className="column-checkbox">
                   <input
                     type="checkbox"
                     checked={visibleColumns.includes(column.key)}
                     onChange={() => toggleColumnVisibility(column.key)}
-                    disabled={column.key === 'symbol' || column.key === 'name'}
+                    disabled={column.key === "symbol" || column.key === "name"}
                   />
                   <span>{column.label}</span>
                 </label>
@@ -347,19 +378,20 @@ export default function StockMetrics() {
             <tr>
               {compareMode && <th className="compare-col">Compare</th>}
               {allColumns
-                .filter(col => visibleColumns.includes(col.key))
-                .map(column => (
+                .filter((col) => visibleColumns.includes(col.key))
+                .map((column) => (
                   <th
                     key={column.key}
                     onClick={() => requestSort(column.key)}
-                    className={`sortable ${sortConfig.key === column.key ? 'active' : ''}`}
+                    className={`sortable ${
+                      sortConfig.key === column.key ? "active" : ""
+                    }`}
                   >
                     <div className="th-content">
                       {column.label}
                       <span className="sort-indicator">
-                        {sortConfig.key === column.key && (
-                          sortConfig.direction === 'asc' ? '↑' : '↓'
-                        )}
+                        {sortConfig.key === column.key &&
+                          (sortConfig.direction === "asc" ? "↑" : "↓")}
                       </span>
                     </div>
                   </th>
@@ -368,7 +400,7 @@ export default function StockMetrics() {
             </tr>
           </thead>
           <tbody>
-            {filteredAndSortedStocks.map(stock => (
+            {filteredAndSortedStocks.map((stock) => (
               <tr key={stock.id} className="stock-row">
                 {compareMode && (
                   <td className="compare-col">
@@ -384,16 +416,21 @@ export default function StockMetrics() {
                   </td>
                 )}
                 {allColumns
-                  .filter(col => visibleColumns.includes(col.key))
-                  .map(column => (
+                  .filter((col) => visibleColumns.includes(col.key))
+                  .map((column) => (
                     <td
                       key={column.key}
-                      className={`${column.key}-cell ${getCellClassName(column.key, stock[column.key])}`}
+                      className={`${column.key}-cell ${getCellClassName(
+                        column.key,
+                        stock[column.key]
+                      )}`}
                     >
-                      {column.key === 'symbol' ? (
+                      {column.key === "symbol" ? (
                         <strong>{stock[column.key]}</strong>
-                      ) : column.key === 'name' ? (
-                        <span className="company-name">{stock[column.key]}</span>
+                      ) : column.key === "name" ? (
+                        <span className="company-name">
+                          {stock[column.key]}
+                        </span>
                       ) : (
                         formatValue(stock[column.key], column.format)
                       )}
@@ -421,7 +458,7 @@ export default function StockMetrics() {
 
       {compareMode && selectedForCompare.length > 0 && (
         <ComparisonPanel
-          stocks={stocks.filter(s => selectedForCompare.includes(s.id))}
+          stocks={stocks.filter((s) => selectedForCompare.includes(s.id))}
           onClose={() => {
             setCompareMode(false);
             setSelectedForCompare([]);

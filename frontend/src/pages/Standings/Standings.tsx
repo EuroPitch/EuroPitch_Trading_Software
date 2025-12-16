@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import './Standings.css';
+import React, { useState, useEffect } from "react";
+import "./Standings.css";
 
 export default function Standings() {
   const [standings, setStandings] = useState([]);
-  const [timeframe, setTimeframe] = useState('all-time');
+  const [timeframe, setTimeframe] = useState("all-time");
   const [loading, setLoading] = useState(true);
   const currentUserId = 3; // This would come from your auth context later
 
@@ -14,16 +14,16 @@ export default function Standings() {
         {
           id: 1,
           rank: 1,
-          username: 'ASTRA',
-          displayName: 'Astra Investment Collective',
-          portfolioValue: 1245680.50,
-          totalReturn: 245680.50,
+          username: "ASTRA",
+          displayName: "Astra Investment Collective",
+          portfolioValue: 1245680.5,
+          totalReturn: 245680.5,
           returnPercent: 24.57,
           winRate: 68.5,
           totalTrades: 147,
-          bestTrade: 45230.00,
-          lastActive: '2025-11-23T14:30:00',
-          joinDate: '2025-01-15'
+          bestTrade: 45230.0,
+          lastActive: "2025-11-23T14:30:00",
+          joinDate: "2025-01-15",
         },
         // ... other mock entries omitted for brevity (kept in original file)
       ];
@@ -34,16 +34,16 @@ export default function Standings() {
   }, [timeframe]);
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     }).format(value);
   };
 
   const formatPercent = (value: number) => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+    return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
 
   const formatDate = (dateString: string) => {
@@ -57,20 +57,20 @@ export default function Standings() {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   const getRankBadgeClass = (rank: number) => {
-    if (rank === 1) return 'rank-badge gold';
-    if (rank === 2) return 'rank-badge silver';
-    if (rank === 3) return 'rank-badge bronze';
-    return 'rank-badge';
+    if (rank === 1) return "rank-badge gold";
+    if (rank === 2) return "rank-badge silver";
+    if (rank === 3) return "rank-badge bronze";
+    return "rank-badge";
   };
 
   const getRankIcon = (rank: number) => {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
+    if (rank === 1) return "🥇";
+    if (rank === 2) return "🥈";
+    if (rank === 3) return "🥉";
     return rank;
   };
 
@@ -90,31 +90,43 @@ export default function Standings() {
       <div className="standings-header">
         <div className="header-content">
           <h1>Society Standings</h1>
-          <p className="header-subtitle">Track your society's performance against other societies</p>
+          <p className="header-subtitle">
+            Track your society's performance against other societies
+          </p>
         </div>
-        
+
         <div className="timeframe-selector">
-          <button 
-            className={timeframe === 'daily' ? 'timeframe-btn active' : 'timeframe-btn'}
-            onClick={() => setTimeframe('daily')}
+          <button
+            className={
+              timeframe === "daily" ? "timeframe-btn active" : "timeframe-btn"
+            }
+            onClick={() => setTimeframe("daily")}
           >
             Daily
           </button>
-          <button 
-            className={timeframe === 'weekly' ? 'timeframe-btn active' : 'timeframe-btn'}
-            onClick={() => setTimeframe('weekly')}
+          <button
+            className={
+              timeframe === "weekly" ? "timeframe-btn active" : "timeframe-btn"
+            }
+            onClick={() => setTimeframe("weekly")}
           >
             Weekly
           </button>
-          <button 
-            className={timeframe === 'monthly' ? 'timeframe-btn active' : 'timeframe-btn'}
-            onClick={() => setTimeframe('monthly')}
+          <button
+            className={
+              timeframe === "monthly" ? "timeframe-btn active" : "timeframe-btn"
+            }
+            onClick={() => setTimeframe("monthly")}
           >
             Monthly
           </button>
-          <button 
-            className={timeframe === 'all-time' ? 'timeframe-btn active' : 'timeframe-btn'}
-            onClick={() => setTimeframe('all-time')}
+          <button
+            className={
+              timeframe === "all-time"
+                ? "timeframe-btn active"
+                : "timeframe-btn"
+            }
+            onClick={() => setTimeframe("all-time")}
           >
             All Time
           </button>
@@ -126,30 +138,44 @@ export default function Standings() {
         <h2>Top Societies</h2>
         <div className="podium-cards">
           {topPerformers.map((trader: any) => (
-            <div 
-              key={trader.id} 
-              className={`podium-card rank-${trader.rank} ${trader.id === currentUserId ? 'current-user' : ''}`}
+            <div
+              key={trader.id}
+              className={`podium-card rank-${trader.rank} ${
+                trader.id === currentUserId ? "current-user" : ""
+              }`}
             >
               <div className="podium-rank">{getRankIcon(trader.rank)}</div>
               <div className="podium-user">
-                <div className="podium-avatar">{trader.username.charAt(0).toUpperCase()}</div>
+                <div className="podium-avatar">
+                  {trader.username.charAt(0).toUpperCase()}
+                </div>
                 <h3>{trader.displayName}</h3>
                 <p className="podium-username">@{trader.username}</p>
               </div>
               <div className="podium-stats">
                 <div className="podium-stat">
                   <span className="stat-label">Funds</span>
-                  <span className="stat-value">{formatCurrency(trader.portfolioValue)}</span>
+                  <span className="stat-value">
+                    {formatCurrency(trader.portfolioValue)}
+                  </span>
                 </div>
                 <div className="podium-stat">
                   <span className="stat-label">Total Return</span>
-                  <span className={`stat-value ${trader.totalReturn >= 0 ? 'positive' : 'negative'}`}>
+                  <span
+                    className={`stat-value ${
+                      trader.totalReturn >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     {formatCurrency(trader.totalReturn)}
                   </span>
                 </div>
                 <div className="podium-stat highlight">
                   <span className="stat-label">Return %</span>
-                  <span className={`stat-value-large ${trader.returnPercent >= 0 ? 'positive' : 'negative'}`}>
+                  <span
+                    className={`stat-value-large ${
+                      trader.returnPercent >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     {formatPercent(trader.returnPercent)}
                   </span>
                 </div>
@@ -179,9 +205,11 @@ export default function Standings() {
             </thead>
             <tbody>
               {standings.map((trader: any) => (
-                <tr 
-                  key={trader.id} 
-                  className={`standings-row ${trader.id === currentUserId ? 'current-user-row' : ''}`}
+                <tr
+                  key={trader.id}
+                  className={`standings-row ${
+                    trader.id === currentUserId ? "current-user-row" : ""
+                  }`}
                 >
                   <td>
                     <span className={getRankBadgeClass(trader.rank)}>
@@ -190,27 +218,45 @@ export default function Standings() {
                   </td>
                   <td>
                     <div className="trader-cell">
-                      <div className="trader-avatar">{trader.username.charAt(0).toUpperCase()}</div>
+                      <div className="trader-avatar">
+                        {trader.username.charAt(0).toUpperCase()}
+                      </div>
                       <div className="trader-info">
                         <strong>{trader.displayName}</strong>
-                        <span className="trader-username">@{trader.username}</span>
+                        <span className="trader-username">
+                          @{trader.username}
+                        </span>
                       </div>
                       {trader.id === currentUserId && (
                         <span className="you-badge">Your Society</span>
                       )}
                     </div>
                   </td>
-                  <td className="align-right">{formatCurrency(trader.portfolioValue)}</td>
-                  <td className={`align-right ${trader.totalReturn >= 0 ? 'positive' : 'negative'}`}>
+                  <td className="align-right">
+                    {formatCurrency(trader.portfolioValue)}
+                  </td>
+                  <td
+                    className={`align-right ${
+                      trader.totalReturn >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     {formatCurrency(trader.totalReturn)}
                   </td>
-                  <td className={`align-right ${trader.returnPercent >= 0 ? 'positive' : 'negative'}`}>
+                  <td
+                    className={`align-right ${
+                      trader.returnPercent >= 0 ? "positive" : "negative"
+                    }`}
+                  >
                     <strong>{formatPercent(trader.returnPercent)}</strong>
                   </td>
                   <td className="align-right">{trader.winRate.toFixed(1)}%</td>
                   <td className="align-right">{trader.totalTrades}</td>
-                  <td className="align-right positive">{formatCurrency(trader.bestTrade)}</td>
-                  <td className="align-right time-cell">{formatDate(trader.lastActive)}</td>
+                  <td className="align-right positive">
+                    {formatCurrency(trader.bestTrade)}
+                  </td>
+                  <td className="align-right time-cell">
+                    {formatDate(trader.lastActive)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -227,13 +273,23 @@ export default function Standings() {
         <div className="footer-stat">
           <span className="footer-label">Avg Portfolio Value</span>
           <span className="footer-value">
-            {formatCurrency(standings.reduce((sum: number, s: any) => sum + s.portfolioValue, 0) / standings.length)}
+            {formatCurrency(
+              standings.reduce(
+                (sum: number, s: any) => sum + s.portfolioValue,
+                0
+              ) / standings.length
+            )}
           </span>
         </div>
         <div className="footer-stat">
           <span className="footer-label">Avg Return</span>
           <span className="footer-value positive">
-            {formatPercent(standings.reduce((sum: number, s: any) => sum + s.returnPercent, 0) / standings.length)}
+            {formatPercent(
+              standings.reduce(
+                (sum: number, s: any) => sum + s.returnPercent,
+                0
+              ) / standings.length
+            )}
           </span>
         </div>
         <div className="footer-stat">
