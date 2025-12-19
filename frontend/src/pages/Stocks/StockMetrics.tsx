@@ -11,6 +11,7 @@ import "./StockMetrics.css";
 export default function StockMetrics() {
   const [stocks, setStocks] = useState([]);
   const [tickers, setTickers] = useState<string[]>([]);
+  const [tickersLoadError, setTickersLoadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({
     key: "marketCap",
@@ -66,46 +67,60 @@ export default function StockMetrics() {
   ];
 
   // Fetch on mount + background refresh every 5s without UI flicker
+  // Load the static tickers file once on mount. The frontend will only use
+  // this list (no fallbacks or dynamic sources). If the file cannot be
+  // loaded, we show an error and stop.
   useEffect(() => {
-    // Behavior:
-    // 1) Load tickers list from public/nyse_tickers.json (if available).
-    // 2) Batch requests to the backend in chunks, merge results.
-    // 3) Keep a short background refresh without UI flicker.
+    let mounted = true;
+
+    const loadTickers = async () => {
+      try {
+        const res = await fetch("/nyse_tickers.json");
+        if (!res.ok) {
+          throw new Error(`Failed to load /nyse_tickers.json: ${res.status}`);
+        }
+        const json = await res.json();
+        let symbols: string[] = [];
+        if (Array.isArray(json)) symbols = json as string[];
+        else if (typeof json === "object" && json !== null)
+          symbols = Object.values(json) as string[];
+        else throw new Error("Invalid format for nyse_tickers.json");
+
+        if (mounted) {
+          if (symbols.length === 0) {
+            setTickersLoadError(
+              "Ticker list is empty. Please populate /nyse_tickers.json with symbols."
+            );
+          } else {
+            setTickers(symbols);
+          }
+        }
+      } catch (err: any) {
+        console.error("Error loading static tickers", err);
+        if (mounted) setTickersLoadError(err.message || String(err));
+      }
+    };
+
+    loadTickers();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Fetch prices/fundamentals in batches whenever the static tickers list is set
+  useEffect(() => {
+    if (tickersLoadError) return;
+    if (!tickers || tickers.length === 0) return; // wait until tickers loaded
 
     let isFirst = true;
     let intervalId: any;
-
-    const loadTickersFile = async () => {
-      try {
-        // public/nyse_tickers.json should be placed in the app's public folder
-        const res = await fetch("/nyse_tickers.json");
-        if (!res.ok) return [];
-        const json = await res.json();
-        if (Array.isArray(json)) return json as string[];
-        // If the file is an object mapping name->symbol, extract values
-        if (typeof json === "object" && json !== null)
-          return Object.values(json) as string[];
-        return [];
-      } catch (e) {
-        console.warn("Could not load /nyse_tickers.json", e);
-        return [];
-      }
-    };
 
     const fetchStocks = async () => {
       try {
         if (isFirst) setLoading(true);
 
-        // If we don't have a tickers list yet, attempt to load it
-        let symbols = tickers;
-        if (!symbols || symbols.length === 0) {
-          symbols = await loadTickersFile();
-          // fallback: if no file found, use a small default sample
-          if (!symbols || symbols.length === 0) {
-            symbols = ["AAPL", "MSFT", "JPM", "JNJ", "TSLA"];
-          }
-          setTickers(symbols);
-        }
+        const symbols = tickers;
 
         // Batch the requests into chunks to avoid extremely long URLs
         const chunks: string[][] = [];
@@ -192,9 +207,7 @@ export default function StockMetrics() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [API_BASE_URL]);
-
-  const sectors = ["all", ...new Set(stocks.map((s) => s.sector))];
+  }, [tickers, tickersLoadError, API_BASE_URL]);
 
   // Track collapsed state for each sector (true -> collapsed)
   const [collapsedSectors, setCollapsedSectors] = useState<
@@ -241,6 +254,11 @@ export default function StockMetrics() {
     });
     return groups;
   }, [filteredAndSortedStocks]);
+
+  const sectors = [
+    "all",
+    ...Array.from(new Set(stocks.map((s) => s.sector || "Unknown"))),
+  ];
 
   const requestSort = (key) => {
     let direction = "asc";

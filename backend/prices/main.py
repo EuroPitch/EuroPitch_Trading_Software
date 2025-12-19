@@ -2,6 +2,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from price_data import get_quotes_for_universe
+import os
+import json
 
 
 app = Flask(__name__)
@@ -39,6 +41,23 @@ def get_equity_quotes():
     }
     
     return jsonify(response)
+
+
+@app.route("/equities/universe", methods=["GET"])
+def get_universe():
+    """Return the static S&P500 tickers JSON hosted in the backend/prices folder."""
+    try:
+        base = os.path.dirname(__file__)
+        path = os.path.join(base, "sp500_tickers.json")
+        with open(path, "r") as f:
+            data = json.load(f)
+        # Ensure it's a list
+        if isinstance(data, dict):
+            # if object mapping name->symbol, return values
+            data = list(data.values())
+        return jsonify({"symbols": data})
+    except Exception as e:
+        return jsonify({"error": "Could not load universe", "details": str(e)}), 500
 
 
 if __name__ == "__main__":
