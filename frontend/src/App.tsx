@@ -12,10 +12,9 @@ function App() {
       <Routes>
         {/* Layout wrapper for all normal pages */}
         <Route path="/" element={<Layout />}>
-          <Route index element={<Portfolio />} />
+          <Route index element={<Login />} />
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/stocks" element={<StockMetrics />} />
-          <Route path="/login" element={<Login />} />
 
           {/* 👇 Catch-all 404 lives INSIDE the Layout */}
           <Route path="*" element={<Error404 />} />
