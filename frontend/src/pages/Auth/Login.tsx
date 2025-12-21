@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./Auth.css";
+import { supabase } from "../../supabaseClient";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -11,11 +12,11 @@ export default function Login() {
   const [errors, setErrors] = useState({} as any);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null); // new
 
   const validateForm = () => {
     const newErrors: any = {};
 
-    // Email validation
     if (!formData.email) {
       newErrors.email = "Email is required";
     } else if (
@@ -24,7 +25,6 @@ export default function Login() {
       newErrors.email = "Invalid email address";
     }
 
-    // Password validation
     if (!formData.password) {
       newErrors.password = "Password is required";
     } else if (formData.password.length < 8) {
@@ -41,13 +41,13 @@ export default function Login() {
       ...prev,
       [name]: value,
     }));
-    // Clear error when user starts typing
     if ((errors as any)[name]) {
       setErrors((prev) => ({
         ...prev,
         [name]: "",
       }));
     }
+    setGlobalError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,109 +58,123 @@ export default function Login() {
     }
 
     setLoading(true);
+    setGlobalError(null);
 
-    setTimeout(() => {
-      setLoading(false);
-      // Mock successful login
-      console.log("Login successful:", formData.email);
-      localStorage.setItem("isAuthenticated", "true");
-      localStorage.setItem("userEmail", formData.email);
-      navigate("/portfolio");
-    }, 1500);
-  };
-
-  const handleDemoLogin = () => {
-    setFormData({
-      email: "demo@portfoliochallenge.com",
-      password: "demo1234",
+    // REAL SUPABASE LOGIN
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: formData.email,
+      password: formData.password,
     });
+
+    setLoading(false);
+
+    if (error) {
+      console.error("Supabase login error:", error);
+      setGlobalError(error.message); // e.g. "Invalid login credentials"
+      return;
+    }
+
+    // Optional: store whether user is "logged in" for your own guards
+    localStorage.setItem("isAuthenticated", "true");
+    localStorage.setItem("userEmail", formData.email);
+
+    console.log("Login successful:", data.user?.email);
+    navigate("/portfolio");
   };
 
-return (
-  <div className="auth-container">
-    <div className="auth-wrapper single-column">
-      <div className="auth-card">
-        <div className="auth-header">
-          <div className="auth-logo">
-            <div className="logo-icon">📈</div>
-            <h1>Portfolio Challenge</h1>
-          </div>
-          <h2>Welcome Back</h2>
-        </div>
-
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="email">Email Address</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className={(errors as any).email ? "error" : ""}
-              placeholder="you@example.com"
-              autoComplete="email"
-            />
-            {(errors as any).email && (
-              <span className="error-message">{(errors as any).email}</span>
-            )}
-          </div>
-
-          <div className="form-group">
-            <div className="label-row">
-              <label htmlFor="password">Password</label>
-              <Link to="/forgot-password" className="forgot-link">
-                Forgot password?
-              </Link>
+  return (
+    <div className="auth-container">
+      <div className="auth-wrapper single-column">
+        <div className="auth-card">
+          <div className="auth-header">
+            <div className="auth-logo">
+              <div className="logo-icon">📈</div>
+              <h1>EuroPitch Portfolio Challenge</h1>
             </div>
-            <div className="password-input-wrapper">
+            <h2>Welcome Back</h2>
+          </div>
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            {globalError && (
+              <div className="error-banner">
+                {globalError}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label htmlFor="email">Email Address</label>
               <input
-                type={showPassword ? "text" : "password"}
-                id="password"
-                name="password"
-                value={formData.password}
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
                 onChange={handleChange}
-                className={(errors as any).password ? "error" : ""}
-                placeholder="Enter your password"
-                autoComplete="current-password"
+                className={(errors as any).email ? "error" : ""}
+                placeholder="you@example.com"
+                autoComplete="email"
               />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? "👁️" : "👁️‍🗨️"}
-              </button>
+              {(errors as any).email && (
+                <span className="error-message">
+                  {(errors as any).email}
+                </span>
+              )}
             </div>
-            {(errors as any).password && (
-              <span className="error-message">
-                {(errors as any).password}
-              </span>
-            )}
-          </div>
 
-          <div className="form-group checkbox-group">
-            <label className="checkbox-label">
-              <input type="checkbox" name="remember" />
-              <span>Remember me for 30 days</span>
-            </label>
-          </div>
+            <div className="form-group">
+              <div className="label-row">
+                <label htmlFor="password">Password</label>
+                <Link to="/forgot-password" className="forgot-link">
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="password-input-wrapper">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  id="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className={(errors as any).password ? "error" : ""}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? "👁️" : "👁️‍🗨️"}
+                </button>
+              </div>
+              {(errors as any).password && (
+                <span className="error-message">
+                  {(errors as any).password}
+                </span>
+              )}
+            </div>
 
-          <button
-            type="submit"
-            className="btn-primary-auth"
-            disabled={loading}
-          >
-            {loading ? (
-              <span className="loading-spinner-small">Signing in...</span>
-            ) : (
-              "Sign In"
-            )}
-          </button>
-        </form>
+            <div className="form-group checkbox-group">
+              <label className="checkbox-label">
+                <input type="checkbox" name="remember" />
+                <span>Remember me for 30 days</span>
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              className="btn-primary-auth"
+              disabled={loading}
+            >
+              {loading ? (
+                <span className="loading-spinner-small">Signing in...</span>
+              ) : (
+                "Sign In"
+              )}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
-  </div>
   );
 }

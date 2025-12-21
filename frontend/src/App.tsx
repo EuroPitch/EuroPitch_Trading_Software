@@ -1,3 +1,4 @@
+// App.tsx
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
 import Error404 from "./pages/404";
@@ -5,18 +6,20 @@ import Portfolio from "./pages/Portfolio/Portfolio";
 import StockMetrics from "./pages/Stocks/StockMetrics";
 import Standings from "./pages/Standings/Standings";
 import Login from "./pages/Auth/Login";
+import { ProtectedRoute } from "./ProtectedRoute";
 
 function App() {
   return (
     <Router>
       <Routes>
-        {/* Layout wrapper for all normal pages */}
         <Route path="/" element={<Layout />}>
           <Route index element={<Login />} />
-          <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/stocks" element={<StockMetrics />} />
 
-          {/* 👇 Catch-all 404 lives INSIDE the Layout */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="portfolio" element={<Portfolio />} />
+            <Route path="stocks" element={<StockMetrics />} />
+          </Route>
+
           <Route path="*" element={<Error404 />} />
         </Route>
         <Route path="/standings" element={<Standings />} />

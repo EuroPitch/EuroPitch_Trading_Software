@@ -5,6 +5,10 @@ import logo from "../assets/EuroPitch_logo.png";
 const Header = () => {
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const isAuthenticated =
+    typeof window !== "undefined" &&
+    localStorage.getItem("isAuthenticated") === "true";
+
   const navItems = [
     { path: "/portfolio", label: "Portfolio" },
     { path: "/stocks", label: "Stocks" },
@@ -29,18 +33,19 @@ const Header = () => {
         </button>
 
         <nav className={`nav-links ${menuOpen ? "active" : ""}`}>
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                isActive ? "nav-link active" : "nav-link"
-              }
-              onClick={() => setMenuOpen(false)}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {isAuthenticated &&
+            navItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  isActive ? "nav-link active" : "nav-link"
+                }
+                onClick={() => setMenuOpen(false)}
+              >
+                {item.label}
+              </NavLink>
+            ))}
         </nav>
       </div>
     </header>

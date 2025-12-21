@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./Auth.css";
+import { supabase } from "../../supabaseClient";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -23,6 +24,8 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
 
   const europeanCountries = [
     "Albania",
@@ -34,9 +37,10 @@ export default function Signup() {
     "Bulgaria",
     "Croatia",
     "Cyprus",
-    "Czech Republic",
+    "Czechia",
     "Denmark",
     "Estonia",
+    "England",
     "Finland",
     "France",
     "Germany",
@@ -56,12 +60,14 @@ export default function Signup() {
     "Montenegro",
     "Netherlands",
     "North Macedonia",
+    "Northern Ireland",
     "Norway",
     "Poland",
     "Portugal",
     "Romania",
     "Russia",
     "San Marino",
+    "Scotland",
     "Serbia",
     "Slovakia",
     "Slovenia",
@@ -69,8 +75,8 @@ export default function Signup() {
     "Sweden",
     "Switzerland",
     "Ukraine",
-    "United Kingdom",
     "Vatican City",
+    "Wales",
   ];
 
   const validateStep1 = () => {
@@ -174,6 +180,7 @@ export default function Signup() {
     const { name, value } = e.target as HTMLInputElement;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if ((errors as any)[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
+    setGlobalError(null);
   };
 
   const handleParticipantChange = (
@@ -189,6 +196,7 @@ export default function Signup() {
     }`;
     if ((errors as any)[errorKey])
       setErrors((prev) => ({ ...prev, [errorKey]: "", duplicateEmails: "" }));
+    setGlobalError(null);
   };
 
   const handleNextStep = () => {
@@ -207,20 +215,45 @@ export default function Signup() {
     e.preventDefault();
     if (!validateStep2()) return;
     setLoading(true);
+    setGlobalError(null);
+    setGlobalSuccess(null);
 
     const filledParticipants = formData.participants.filter(
       (p: any, i: number) => i < 4 || (p.firstName && p.lastName && p.email)
     );
-    const registrationData = { ...formData, participants: filledParticipants };
 
-    setTimeout(() => {
-      setLoading(false);
-      console.log("Registration successful:", registrationData);
-      localStorage.setItem("isAuthenticated", "true");
-      localStorage.setItem("societyName", formData.societyName);
-      localStorage.setItem("country", formData.country);
-      navigate("/portfolio");
-    }, 1500);
+    // SIGN UP WITH SUPABASE
+    const { data, error } = await supabase.auth.signUp({
+      email: formData.societyEmail,
+      password: formData.password,
+      options: {
+        data: {
+          society_name: formData.societyName,
+          country: formData.country,
+          participants: filledParticipants,
+          captain_index: formData.captainIndex,
+        },
+      },
+    });
+
+    setLoading(false);
+
+    if (error) {
+      console.error("Supabase signup error:", error);
+      setGlobalError(error.message);
+      return;
+    }
+
+    // If you're using the trigger we wrote earlier, this will auto-create the profile row.
+    // You can still stash some meta locally if you want.
+    localStorage.setItem("isAuthenticated", "true");
+    localStorage.setItem("societyName", formData.societyName);
+    localStorage.setItem("country", formData.country);
+
+    setGlobalSuccess("Registration successful. Redirecting to portfolio...");
+    console.log("Registration successful:", data.user?.email);
+
+    navigate("/portfolio");
   };
 
   const getPasswordStrength = () => {
@@ -269,6 +302,13 @@ export default function Signup() {
 
           {step === 1 && (
             <form className="auth-form">
+              {globalError && (
+                <div className="error-banner">{globalError}</div>
+              )}
+              {globalSuccess && (
+                <div className="success-banner">{globalSuccess}</div>
+              )}
+
               <div className="form-group">
                 <label htmlFor="societyName">Society Name *</label>
                 <input
@@ -399,7 +439,9 @@ export default function Signup() {
                   <button
                     type="button"
                     className="password-toggle"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    onClick={() =>
+                      setShowConfirmPassword(!showConfirmPassword)
+                    }
                     aria-label={
                       showConfirmPassword ? "Hide password" : "Show password"
                     }
@@ -435,6 +477,13 @@ export default function Signup() {
 
           {step === 2 && (
             <form onSubmit={handleSubmit} className="auth-form">
+              {globalError && (
+                <div className="error-banner">{globalError}</div>
+              )}
+              {globalSuccess && (
+                <div className="success-banner">{globalSuccess}</div>
+              )}
+
               <div className="team-section">
                 <h3>Team Members</h3>
                 <p className="section-description">
