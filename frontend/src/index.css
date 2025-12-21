@@ -72,7 +72,7 @@ body {
 }
 
 .logo {
-  height: 50px;
+  height: 60px;
   width: auto;
   object-fit: contain;
   filter: invert(1) brightness(1.2) contrast(1.1);
