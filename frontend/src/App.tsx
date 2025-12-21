@@ -7,6 +7,7 @@ import StockMetrics from "./pages/Stocks/StockMetrics";
 import Standings from "./pages/Standings/Standings";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { HomeRoute } from "./HomeRoute";
+import Signup from "./pages/Auth/Signup";
 
 export default function App() {
   return (
@@ -25,6 +26,8 @@ export default function App() {
         </Route>
 
         <Route path="/standings" element={<Standings />} />
+
+        <Route path="/societies-and-whatnot-we-shall-see" element={<Signup />} />
       </Routes>
     </Router>
   );
