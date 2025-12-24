@@ -281,7 +281,7 @@ export default function Dashboard() {
     <div className="dashboard-container">
       <div className="dashboard-header">
         <div className="welcome-section">
-          <h1>Welcome back, {userEmail.split("@")[0]}!</h1>
+          <h1>{userEmail.split("@")[0]} Portfolio Dashboard</h1>
           <p className="welcome-subtitle">Here's an overview of your trading account</p>
         </div>
         <button onClick={handleLogout} className="dashboard-logout-button">
