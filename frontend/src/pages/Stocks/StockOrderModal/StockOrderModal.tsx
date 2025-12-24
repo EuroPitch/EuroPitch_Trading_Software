@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import "./StockOrderModal.css";
+import { supabase } from "../../../supabaseClient";
 
 interface StockOrderModalProps {
   stock: any;
@@ -16,22 +17,42 @@ interface TradeOrder {
   totalValue: number;
 }
 
-export default function StockOrderModal({ stock, onClose, onExecuteTrade }: StockOrderModalProps) {
+export default function StockOrderModal({
+  stock,
+  onClose,
+  onExecuteTrade,
+}: StockOrderModalProps) {
   const [action, setAction] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
-  const [quantity, setQuantity] = useState<number>(0);
-  const [limitPrice, setLimitPrice] = useState<number>(stock.price);
+  const [quantity, setQuantity] = useState(0);
+  const [limitPrice, setLimitPrice] = useState(stock.price);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const effectivePrice = orderType === "market" ? stock.price : limitPrice;
   const totalValue = quantity * effectivePrice;
-  const isValidOrder = quantity > 0 && (orderType === "market" || (orderType === "limit" && limitPrice > 0));
+
+  const isValidOrder =
+    quantity > 0 &&
+    (orderType === "market" || (orderType === "limit" && limitPrice > 0));
 
   const handleExecute = async () => {
     if (!isValidOrder) return;
 
     setIsProcessing(true);
+
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     
+    if (authError || !user) {
+      console.error("Auth error:", authError);
+      alert("You must be logged in to place trades");
+      setIsProcessing(false);
+      return;
+    }
+
+    const userId = user.id;
+    const profileId = user.id;
+
     const trade: TradeOrder = {
       symbol: stock.symbol,
       orderType,
@@ -41,44 +62,78 @@ export default function StockOrderModal({ stock, onClose, onExecuteTrade }: Stoc
       totalValue,
     };
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
+    const price = effectivePrice;
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("trades")
+      .insert([
+        {
+          profile_id: profileId,
+          symbol: stock.symbol,
+          side: action,
+          quantity: quantity,
+          price: price,
+          // notional removed - it's auto-calculated by the DB
+          order_type: orderType,
+          placed_at: now,
+          filled_at: now,
+          created_by: userId,
+        },
+      ])
+      .select();
+
+    if (error) {
+      console.error("Error inserting trade:", error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+      alert(`Failed to execute order: ${error.message || "Unknown error"}`);
+      setIsProcessing(false);
+      return;
+    }
+
+    console.log("Trade inserted successfully:", data);
 
     if (onExecuteTrade) {
       onExecuteTrade(trade);
     }
 
     setIsProcessing(false);
-    alert(`${action.toUpperCase()} order executed: ${quantity} shares of ${stock.symbol}`);
+    alert(
+      `${action.toUpperCase()} order executed: ${quantity} shares of ${stock.symbol}`
+    );
     onClose();
   };
 
-  return (
-    <div className="order-modal-container">
-      <div className="order-header">
-        <div>
-          <h3>Execute Trade</h3>
-          <p className="order-subtitle">{stock.symbol} - {stock.name}</p>
-        </div>
-        <div className="current-price">
-          <span className="price-label">Current Price</span>
-          <span className="price-value">${stock.price.toFixed(2)}</span>
-        </div>
-      </div>
 
-      <div className="order-body">
+  return (
+    <div className="stock-order-modal-overlay">
+      <div className="stock-order-modal">
+        <h2 className="modal-title">Execute Trade</h2>
+
+        <div className="stock-header">
+          <span className="stock-symbol">{stock.symbol}</span>
+          <span className="stock-name">{stock.name}</span>
+        </div>
+
+        <div className="current-price">
+          <span className="label">Current Price</span>
+          <span className="value">${stock.price.toFixed(2)}</span>
+        </div>
+
         {/* Action Toggle */}
-        <div className="order-section">
-          <label className="section-label">Action</label>
+        <div className="section">
+          <span className="label">Action</span>
           <div className="action-toggle">
             <button
-              className={`toggle-btn buy ${action === "buy" ? "active" : ""}`}
+              className={`toggle-button ${action === "buy" ? "active buy" : ""}`}
               onClick={() => setAction("buy")}
             >
               Buy
             </button>
             <button
-              className={`toggle-btn sell ${action === "sell" ? "active" : ""}`}
+              className={`toggle-button ${
+                action === "sell" ? "active sell" : ""
+              }`}
               onClick={() => setAction("sell")}
             >
               Sell
@@ -87,89 +142,104 @@ export default function StockOrderModal({ stock, onClose, onExecuteTrade }: Stoc
         </div>
 
         {/* Order Type */}
-        <div className="order-section">
-          <label className="section-label">Order Type</label>
+        <div className="section">
+          <span className="label">Order Type</span>
           <div className="order-type-toggle">
             <button
-              className={`toggle-btn ${orderType === "market" ? "active" : ""}`}
+              className={`toggle-button ${
+                orderType === "market" ? "active" : ""
+              }`}
               onClick={() => setOrderType("market")}
             >
-              Market Order
+              Market
             </button>
             <button
-              className={`toggle-btn ${orderType === "limit" ? "active" : ""}`}
+              className={`toggle-button ${
+                orderType === "limit" ? "active" : ""
+              }`}
               onClick={() => setOrderType("limit")}
             >
-              Limit Order
+              Limit
             </button>
           </div>
         </div>
 
-        {/* Quantity Input */}
-        <div className="order-section">
-          <label className="section-label" htmlFor="quantity">
+        {/* Quantity */}
+        <div className="section">
+          <label className="label" htmlFor="quantity-input">
             Quantity (Shares)
           </label>
           <input
-            id="quantity"
+            id="quantity-input"
             type="number"
-            min="0"
-            step="1"
-            value={quantity || ""}
-            onChange={(e) => setQuantity(Math.max(0, parseInt(e.target.value) || 0))}
+            min={0}
+            value={quantity}
+            onChange={(e) =>
+              setQuantity(Math.max(0, parseInt(e.target.value) || 0))
+            }
             className="order-input"
             placeholder="Enter number of shares"
           />
         </div>
 
-        {/* Limit Price Input */}
+        {/* Limit Price */}
         {orderType === "limit" && (
-          <div className="order-section">
-            <label className="section-label" htmlFor="limitPrice">
+          <div className="section">
+            <label className="label" htmlFor="limit-price-input">
               Limit Price ($)
             </label>
             <input
-              id="limitPrice"
+              id="limit-price-input"
               type="number"
-              min="0"
+              min={0}
               step="0.01"
-              value={limitPrice || ""}
-              onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
+              value={limitPrice}
+              onChange={(e) =>
+                setLimitPrice(parseFloat(e.target.value) || 0)
+              }
               className="order-input"
               placeholder="Enter limit price"
             />
           </div>
         )}
 
-        {/* Order Summary */}
+        {/* Summary */}
         <div className="order-summary">
           <div className="summary-row">
-            <span className="summary-label">Shares</span>
-            <span className="summary-value">{quantity}</span>
+            <span className="label">Shares</span>
+            <span className="value">{quantity}</span>
           </div>
           <div className="summary-row">
-            <span className="summary-label">Price per Share</span>
-            <span className="summary-value">${effectivePrice.toFixed(2)}</span>
+            <span className="label">Price per Share</span>
+            <span className="value">${effectivePrice.toFixed(2)}</span>
           </div>
-          <div className="summary-row total">
-            <span className="summary-label">Total {action === "buy" ? "Cost" : "Proceeds"}</span>
-            <span className="summary-value">${totalValue.toFixed(2)}</span>
+          <div className="summary-row">
+            <span className="label">
+              Total {action === "buy" ? "Cost" : "Proceeds"}
+            </span>
+            <span className="value">${totalValue.toFixed(2)}</span>
           </div>
         </div>
-      </div>
 
-      {/* Action Buttons */}
-      <div className="order-footer">
-        <button className="btn-order-cancel" onClick={onClose}>
-          Cancel
-        </button>
-        <button
-          className={`btn-order-execute ${action}`}
-          onClick={handleExecute}
-          disabled={!isValidOrder || isProcessing}
-        >
-          {isProcessing ? "Processing..." : `${action === "buy" ? "Buy" : "Sell"} ${stock.symbol}`}
-        </button>
+        {/* Buttons */}
+        <div className="modal-actions">
+          <button
+            className="btn cancel"
+            onClick={onClose}
+            disabled={isProcessing}
+          >
+            Cancel
+          </button>
+          <button
+            className={`btn execute ${action}`}
+            onClick={handleExecute}
+            disabled={!isValidOrder || isProcessing}
+          >
+            {isProcessing
+              ? "Processing..."
+              : `${action === "buy" ? "Buy" : "Sell"} ${stock.symbol}`}
+          </button>
+        </div>
       </div>
     </div>
   );
