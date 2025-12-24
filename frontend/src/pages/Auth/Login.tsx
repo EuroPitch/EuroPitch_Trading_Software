@@ -79,7 +79,7 @@ export default function Login() {
     localStorage.setItem("userEmail", formData.email);
 
     console.log("Login successful:", data.user?.email);
-    navigate("/portfolio");
+    navigate("/dashboard");
   };
 
   return (

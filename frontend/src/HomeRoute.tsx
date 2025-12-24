@@ -11,7 +11,7 @@ export function HomeRoute() {
   }
 
   if (session) {
-    return <Navigate to="/portfolio" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <Login />;

@@ -11,6 +11,7 @@ const Header = () => {
   const isAuthenticated = !!session && !loading;
 
   const navItems = [
+    { path: "/dashboard", label: "Dashboard" },
     { path: "/portfolio", label: "Portfolio" },
     { path: "/stocks", label: "Stocks" },
   ];

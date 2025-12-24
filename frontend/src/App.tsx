@@ -2,6 +2,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
 import Error404 from "./pages/404";
+import Dashboard from "./pages/Dashboard/Dashboard";
 import Portfolio from "./pages/Portfolio/Portfolio";
 import StockMetrics from "./pages/Stocks/StockMetrics/StockMetrics";
 import Standings from "./pages/Standings/Standings";
@@ -14,12 +15,12 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Layout />}>
-          {/* If authed -> /portfolio, else show Login */}
           <Route index element={<HomeRoute />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path="portfolio" element={<Portfolio />} />
             <Route path="stocks" element={<StockMetrics />} />
+            <Route path="dashboard" element={<Dashboard />} />
           </Route>
 
           <Route path="*" element={<Error404 />} />
