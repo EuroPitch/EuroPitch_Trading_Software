@@ -7,7 +7,7 @@ type Position = {
   id: number | string;
   symbol: string;
   name?: string;
-  positionType?: string; // "LONG" | "SHORT"
+  positionType?: string;
   quantity: number;
   entryPrice?: number;
   currentPrice?: number;
@@ -26,17 +26,9 @@ export default function Portfolio() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Helper calculations
   const calculatePnL = (position: Position) => {
-    const marketValue =
-      typeof position.marketValue === "number"
-        ? position.marketValue
-        : (position.currentPrice ?? 0) * (position.quantity ?? 0);
-
-    const costBasis =
-      typeof position.costBasis === "number"
-        ? position.costBasis
-        : (position.entryPrice ?? 0) * (position.quantity ?? 0);
+    const marketValue = position.marketValue ?? 0;
+    const costBasis = position.costBasis ?? 0;
 
     if ((position.positionType ?? "LONG").toUpperCase() === "LONG") {
       return marketValue - costBasis;
@@ -47,40 +39,9 @@ export default function Portfolio() {
 
   const calculatePnLPercent = (position: Position) => {
     const pnl = calculatePnL(position);
-    const costBasis =
-      typeof position.costBasis === "number"
-        ? position.costBasis
-        : (position.entryPrice ?? 0) * (position.quantity ?? 0);
+    const costBasis = position.costBasis ?? 0;
     if (costBasis === 0) return 0;
     return (pnl / costBasis) * 100;
-  };
-
-  const calculateSummary = (positions: Position[]) => {
-    const totalValue = positions.reduce((sum, pos) => {
-      const mv =
-        typeof pos.marketValue === "number"
-          ? pos.marketValue
-          : (pos.currentPrice ?? 0) * (pos.quantity ?? 0);
-      return sum + mv;
-    }, 0);
-
-    const totalPnL = positions.reduce((sum, pos) => sum + calculatePnL(pos), 0);
-
-    const totalCost = positions.reduce((sum, pos) => {
-      const cb =
-        typeof pos.costBasis === "number"
-          ? pos.costBasis
-          : (pos.entryPrice ?? 0) * (pos.quantity ?? 0);
-      return sum + cb;
-    }, 0);
-
-    const totalPnLPercent = totalCost === 0 ? 0 : (totalPnL / totalCost) * 100;
-
-    setSummary({
-      totalValue,
-      totalPnL,
-      totalPnLPercent,
-    });
   };
 
   const formatCurrency = (value: number) => {
@@ -94,16 +55,12 @@ export default function Portfolio() {
     return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
 
-  // Fetch positions from Supabase for the logged-in user
   useEffect(() => {
     const fetchPositions = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        // The app stores trades in `public.trades`.
-        // and columns that roughly match the keys used below. If your table/column names differ,
-        // update the query accordingly.
         const userId = session?.user?.id;
         if (!userId) {
           setPositions([]);
@@ -112,8 +69,11 @@ export default function Portfolio() {
           return;
         }
 
-        // Explicitly select from public.trades; supabase allows schema-qualified table names.
-        const { data, error: fetchError } = await supabase
+        // Fetch initial capital from profiles table
+        let initialCapital = 100000; // default
+        
+        // Fetch all trades for this user
+        const { data: tradesData, error: fetchError } = await supabase
           .from("trades")
           .select("*")
           .eq("profile_id", userId);
@@ -122,172 +82,169 @@ export default function Portfolio() {
           throw fetchError;
         }
 
-        const rows: Position[] = (data ?? []).map((r: any) => ({
-          id: r.id,
-          // common symbol column
-          symbol: r.symbol ?? r.ticker ?? r.asset_symbol ?? "",
-          // name / company
-          name: r.name ?? r.company_name ?? r.asset_name,
-          // position or trade side: LONG/SHORT or BUY/SELL -> normalize to LONG/SHORT
-          positionType: (
-            r.position_type ??
-            r.positionType ??
-            r.side ??
-            r.trade_type ??
-            "LONG"
-          )
-            .toString()
-            .toUpperCase()
-            .replace("BUY", "LONG")
-            .replace("SELL", "SHORT"),
-          // quantity may be stored as qty/shares
-          quantity: Number(r.quantity ?? r.qty ?? r.shares ?? 0),
-          // entry price / avg cost
-          entryPrice: Number(
-            r.entry_price ?? r.entryPrice ?? r.avg_cost ?? r.price ?? 0
-          ),
-          // current / last price
-          currentPrice: Number(
-            r.current_price ??
-              r.currentPrice ??
-              r.last_price ??
-              r.price_now ??
-              0
-          ),
-          marketValue: r.market_value ?? r.marketValue,
-          costBasis: r.cost_basis ?? r.costBasis,
-        }));
+        // Aggregate trades into positions by symbol + side
+        const positionsMap = new Map<string, Position>();
 
-        setPositions(rows);
+        (tradesData ?? []).forEach((trade: any) => {
+          const symbol = trade.symbol ?? "";
+          const side = (trade.side ?? "buy").toLowerCase();
+          const positionType = side === "buy" ? "LONG" : "SHORT";
+          const key = `${symbol}_${positionType}`;
 
-        // Compute summary locally first
-        const computedTotalValue = rows.reduce((sum, pos) => {
-          const mv =
-            typeof pos.marketValue === "number"
-              ? pos.marketValue
-              : (pos.currentPrice ?? 0) * (pos.quantity ?? 0);
-          return sum + mv;
-        }, 0);
+          const quantity = Number(trade.quantity ?? 0);
+          const price = Number(trade.price ?? 0);
+          const notional = Number(trade.notional ?? quantity * price);
 
-        const computedTotalPnL = rows.reduce(
-          (sum, pos) => sum + calculatePnL(pos),
-          0
-        );
-
-        const computedTotalCost = rows.reduce((sum, pos) => {
-          const cb =
-            typeof pos.costBasis === "number"
-              ? pos.costBasis
-              : (pos.entryPrice ?? 0) * (pos.quantity ?? 0);
-          return sum + cb;
-        }, 0);
-
-        const computedTotalPnLPercent =
-          computedTotalCost === 0
-            ? 0
-            : (computedTotalPnL / computedTotalCost) * 100;
-
-        // Try to fetch precomputed totals from profiles table and prefer them when present
-        try {
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", userId)
-            .limit(1)
-            .maybeSingle();
-
-          if (!profileError && profileData) {
-            // Accept several common field names as fallbacks
-            // Prefer `total_equity` for total value when available
-            const pvRaw =
-              profileData.total_equity ??
-              profileData.total_value ??
-              profileData.portfolio_value ??
-              profileData.total_value_eur ??
-              profileData.total_value_usd ??
-              profileData.value;
-            const pnlRaw =
-              profileData.total_pnl ??
-              profileData.pnl ??
-              profileData.unrealized_pnl ??
-              profileData.realized_pnl ??
-              profileData.profit_loss;
-            const retRaw =
-              profileData.total_return ??
-              profileData.total_return_percent ??
-              profileData.return_percent ??
-              profileData.returns;
-
-            const pv = typeof pvRaw === "number" ? pvRaw : Number(pvRaw ?? NaN);
-            const ppnl =
-              typeof pnlRaw === "number" ? pnlRaw : Number(pnlRaw ?? NaN);
-            const pret =
-              typeof retRaw === "number" ? retRaw : Number(retRaw ?? NaN);
-
-            // Determine an initial capital value (prefer explicit field if present)
-            const initialCapitalRaw =
-              profileData.initial_capital ??
-              profileData.starting_balance ??
-              profileData.initial_balance ??
-              profileData.initial_deposit ??
-              100000;
-            const initialCapital = Number.isFinite(Number(initialCapitalRaw))
-              ? Number(initialCapitalRaw)
-              : 100000;
-
-            // Choose total value: prefer pv (profile-derived) when finite, otherwise computedTotalValue
-            const totalValueChosen =
-              Number.isFinite(pv) && pv !== 0 ? pv : computedTotalValue;
-
-            // If total_equity is present on the profile (we used it for pvRaw), compute PnL persistently as equity - initialCapital
-            if (profileData.total_equity !== undefined) {
-              const persistentPnL = totalValueChosen - initialCapital;
-              const persistentPnLPercent =
-                initialCapital === 0
-                  ? 0
-                  : (persistentPnL / initialCapital) * 100;
-
-              setSummary({
-                totalValue: totalValueChosen,
-                totalPnL: persistentPnL,
-                totalPnLPercent: persistentPnLPercent,
-              });
-            } else {
-              // Fall back to any profile-stored PnL/Return, otherwise computed values
-              setSummary({
-                totalValue: totalValueChosen,
-                totalPnL: Number.isFinite(ppnl) ? ppnl : computedTotalPnL,
-                totalPnLPercent: Number.isFinite(pret)
-                  ? pret
-                  : computedTotalPnLPercent,
-              });
-            }
-          } else {
-            // No profile totals available — use computed values
-            setSummary({
-              totalValue: computedTotalValue,
-              totalPnL: computedTotalPnL,
-              totalPnLPercent: computedTotalPnLPercent,
+          if (!positionsMap.has(key)) {
+            positionsMap.set(key, {
+              id: key,
+              symbol,
+              name: "",
+              positionType,
+              quantity: 0,
+              entryPrice: 0,
+              currentPrice: 0,
+              marketValue: 0,
+              costBasis: 0,
             });
           }
-        } catch (profileFetchErr) {
-          // On any profile fetch error, fall back to computed values
-          console.warn("Error fetching profile totals:", profileFetchErr);
-          setSummary({
-            totalValue: computedTotalValue,
-            totalPnL: computedTotalPnL,
-            totalPnLPercent: computedTotalPnLPercent,
-          });
+
+          const position = positionsMap.get(key)!;
+          position.quantity += quantity;
+          position.costBasis = (position.costBasis ?? 0) + notional;
+          position.entryPrice = position.costBasis / position.quantity;
+        });
+
+        const aggregatedPositions = Array.from(positionsMap.values());
+
+        // Get unique symbols to fetch prices for
+        const symbols = [...new Set(aggregatedPositions.map((p) => p.symbol))];
+
+        // Fetch current prices from API
+        let priceMap = new Map<string, { price: number; name: string }>();
+
+        if (symbols.length > 0) {
+          try {
+            const symbolParams = symbols
+              .map((s) => `symbols=${s}`)
+              .join("&");
+            const priceResponse = await fetch(
+              `https://europitch-trading-prices.vercel.app/equities/quotes?${symbolParams}&chunk_size=50`
+            );
+
+            if (priceResponse.ok) {
+              const priceData = await priceResponse.json();
+
+              // Adjust based on your API response structure
+              if (Array.isArray(priceData)) {
+                priceData.forEach((item: any) => {
+                  priceMap.set(item.symbol ?? item.ticker, {
+                    price: Number(
+                      item.price ?? item.last ?? item.close ?? item.current ?? 0
+                    ),
+                    name:
+                      item.name ??
+                      item.companyName ??
+                      item.shortName ??
+                      item.symbol,
+                  });
+                });
+              } else {
+                // If it's an object with symbols as keys
+                Object.entries(priceData).forEach(
+                  ([symbol, data]: [string, any]) => {
+                    priceMap.set(symbol, {
+                      price: Number(
+                        data.price ??
+                          data.last ??
+                          data.close ??
+                          data.current ??
+                          0
+                      ),
+                      name:
+                        data.name ??
+                        data.companyName ??
+                        data.shortName ??
+                        symbol,
+                    });
+                  }
+                );
+              }
+            } else {
+              console.warn(
+                "Price API returned error:",
+                priceResponse.status
+              );
+            }
+          } catch (priceError) {
+            console.error("Failed to fetch prices:", priceError);
+            // Fallback: use entry prices
+            aggregatedPositions.forEach((pos) => {
+              priceMap.set(pos.symbol, {
+                price: pos.entryPrice ?? 0,
+                name: pos.symbol,
+              });
+            });
+          }
         }
+
+        // Merge prices into positions
+        const enrichedPositions: Position[] = aggregatedPositions.map(
+          (pos) => {
+            const priceInfo = priceMap.get(pos.symbol);
+            const currentPrice = priceInfo?.price ?? pos.entryPrice ?? 0;
+            const name = priceInfo?.name ?? pos.symbol;
+
+            return {
+              ...pos,
+              name,
+              currentPrice,
+              marketValue: currentPrice * pos.quantity,
+            };
+          }
+        );
+
+        setPositions(enrichedPositions);
+
+        // Calculate summary with cash balance
+        const computedEquityValue = enrichedPositions.reduce((sum, pos) => {
+          return sum + (pos.marketValue ?? 0);
+        }, 0);
+
+        const computedTotalCost = enrichedPositions.reduce((sum, pos) => {
+          return sum + (pos.costBasis ?? 0);
+        }, 0);
+
+        // Cash = starting capital - total amount invested
+        const cashBalance = initialCapital - computedTotalCost;
+
+        // Total portfolio value = equity + cash
+        const totalPortfolioValue = computedEquityValue + cashBalance;
+
+        // P&L = current equity value - cost basis
+        const computedTotalPnL = computedEquityValue - computedTotalCost;
+
+        // Return % = P&L / initial capital
+        const computedTotalPnLPercent =
+          initialCapital === 0
+            ? 0
+            : (computedTotalPnL / initialCapital) * 100;
+
+        setSummary({
+          totalValue: totalPortfolioValue,
+          totalPnL: computedTotalPnL,
+          totalPnLPercent: computedTotalPnLPercent,
+        });
       } catch (err: any) {
         console.error("Error fetching positions:", err?.message ?? err);
-        setError(err?.message ?? "An error occurred while fetching positions");
+        setError(
+          err?.message ?? "An error occurred while fetching positions"
+        );
       } finally {
         setLoading(false);
       }
     };
 
-    // fetch when auth state ready or changes
     if (!authLoading) fetchPositions();
   }, [session, authLoading]);
 
@@ -374,11 +331,7 @@ export default function Portfolio() {
                         {formatCurrency(position.currentPrice ?? 0)}
                       </td>
                       <td className="align-right">
-                        {formatCurrency(
-                          position.marketValue ??
-                            (position.currentPrice ?? 0) *
-                              (position.quantity ?? 0)
-                        )}
+                        {formatCurrency(position.marketValue ?? 0)}
                       </td>
                       <td
                         className={`align-right ${
