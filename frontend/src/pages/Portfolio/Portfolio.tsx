@@ -70,37 +70,51 @@ export default function Portfolio() {
         }
 
         // Fetch initial capital from profiles table
-        let initialCapital = 100000; // default
-        
-        // Fetch all trades for this user
+        let initialCapital = 100000;
+        try {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("initial_capital")
+            .eq("id", userId)
+            .single();
+
+          if (profileData?.initial_capital) {
+            initialCapital = Number(profileData.initial_capital);
+          }
+        } catch (err) {
+          console.warn("Could not fetch initial capital, using default €100k");
+        }
+
+        // Fetch all trades for this user, ordered by time
         const { data: tradesData, error: fetchError } = await supabase
           .from("trades")
           .select("*")
-          .eq("profile_id", userId);
+          .eq("profile_id", userId)
+          .order("placed_at", { ascending: true });
 
         if (fetchError) {
           throw fetchError;
         }
 
-        // Aggregate trades into positions by symbol + side
+        // Aggregate trades with position netting
         const positionsMap = new Map<string, Position>();
 
         (tradesData ?? []).forEach((trade: any) => {
           const symbol = trade.symbol ?? "";
           const side = (trade.side ?? "buy").toLowerCase();
-          const positionType = side === "buy" ? "LONG" : "SHORT";
-          const key = `${symbol}_${positionType}`;
-
           const quantity = Number(trade.quantity ?? 0);
           const price = Number(trade.price ?? 0);
           const notional = Number(trade.notional ?? quantity * price);
+
+          // Use just symbol as key for netting
+          const key = symbol;
 
           if (!positionsMap.has(key)) {
             positionsMap.set(key, {
               id: key,
               symbol,
               name: "",
-              positionType,
+              positionType: "LONG",
               quantity: 0,
               entryPrice: 0,
               currentPrice: 0,
@@ -110,12 +124,58 @@ export default function Portfolio() {
           }
 
           const position = positionsMap.get(key)!;
-          position.quantity += quantity;
-          position.costBasis = (position.costBasis ?? 0) + notional;
-          position.entryPrice = position.costBasis / position.quantity;
+
+          if (side === "buy") {
+            // Buying adds to position
+            const oldQuantity = position.quantity;
+            const oldCost = position.costBasis ?? 0;
+
+            position.quantity += quantity;
+            position.costBasis = oldCost + notional;
+
+            if (position.quantity > 0) {
+              position.entryPrice = position.costBasis / position.quantity;
+              position.positionType = "LONG";
+            }
+          } else if (side === "sell") {
+            // Selling reduces position
+            const oldQuantity = position.quantity;
+            position.quantity -= quantity;
+
+            // Adjust cost basis proportionally
+            if (oldQuantity > 0) {
+              const remainingRatio =
+                oldQuantity !== 0 ? position.quantity / oldQuantity : 0;
+              position.costBasis =
+                (position.costBasis ?? 0) * Math.max(0, remainingRatio);
+
+              if (position.quantity > 0) {
+                position.entryPrice = position.costBasis / position.quantity;
+                position.positionType = "LONG";
+              } else if (position.quantity < 0) {
+                // Flipped to short
+                position.positionType = "SHORT";
+                position.costBasis = Math.abs(position.quantity) * price;
+                position.entryPrice = price;
+              } else {
+                // Flat
+                position.costBasis = 0;
+                position.entryPrice = 0;
+              }
+            } else {
+              // Opening short position or adding to short
+              position.quantity -= quantity;
+              position.positionType = "SHORT";
+              position.costBasis = Math.abs(position.quantity) * price;
+              position.entryPrice = price;
+            }
+          }
         });
 
-        const aggregatedPositions = Array.from(positionsMap.values());
+        // Filter out flat positions (quantity = 0)
+        const aggregatedPositions = Array.from(positionsMap.values()).filter(
+          (pos) => pos.quantity !== 0
+        );
 
         // Get unique symbols to fetch prices for
         const symbols = [...new Set(aggregatedPositions.map((p) => p.symbol))];
@@ -125,9 +185,7 @@ export default function Portfolio() {
 
         if (symbols.length > 0) {
           try {
-            const symbolParams = symbols
-              .map((s) => `symbols=${s}`)
-              .join("&");
+            const symbolParams = symbols.map((s) => `symbols=${s}`).join("&");
             const priceResponse = await fetch(
               `https://europitch-trading-prices.vercel.app/equities/quotes?${symbolParams}&chunk_size=50`
             );
@@ -135,7 +193,6 @@ export default function Portfolio() {
             if (priceResponse.ok) {
               const priceData = await priceResponse.json();
 
-              // Adjust based on your API response structure
               if (Array.isArray(priceData)) {
                 priceData.forEach((item: any) => {
                   priceMap.set(item.symbol ?? item.ticker, {
@@ -150,7 +207,6 @@ export default function Portfolio() {
                   });
                 });
               } else {
-                // If it's an object with symbols as keys
                 Object.entries(priceData).forEach(
                   ([symbol, data]: [string, any]) => {
                     priceMap.set(symbol, {
@@ -171,14 +227,10 @@ export default function Portfolio() {
                 );
               }
             } else {
-              console.warn(
-                "Price API returned error:",
-                priceResponse.status
-              );
+              console.warn("Price API returned error:", priceResponse.status);
             }
           } catch (priceError) {
             console.error("Failed to fetch prices:", priceError);
-            // Fallback: use entry prices
             aggregatedPositions.forEach((pos) => {
               priceMap.set(pos.symbol, {
                 price: pos.entryPrice ?? 0,
@@ -199,7 +251,7 @@ export default function Portfolio() {
               ...pos,
               name,
               currentPrice,
-              marketValue: currentPrice * pos.quantity,
+              marketValue: Math.abs(pos.quantity) * currentPrice,
             };
           }
         );
@@ -212,23 +264,17 @@ export default function Portfolio() {
         }, 0);
 
         const computedTotalCost = enrichedPositions.reduce((sum, pos) => {
-          return sum + (pos.costBasis ?? 0);
+          return sum + Math.abs(pos.costBasis ?? 0);
         }, 0);
 
-        // Cash = starting capital - total amount invested
         const cashBalance = initialCapital - computedTotalCost;
-
-        // Total portfolio value = equity + cash
         const totalPortfolioValue = computedEquityValue + cashBalance;
-
-        // P&L = current equity value - cost basis
-        const computedTotalPnL = computedEquityValue - computedTotalCost;
-
-        // Return % = P&L / initial capital
+        const computedTotalPnL = enrichedPositions.reduce(
+          (sum, pos) => sum + calculatePnL(pos),
+          0
+        );
         const computedTotalPnLPercent =
-          initialCapital === 0
-            ? 0
-            : (computedTotalPnL / initialCapital) * 100;
+          initialCapital === 0 ? 0 : (computedTotalPnL / initialCapital) * 100;
 
         setSummary({
           totalValue: totalPortfolioValue,
@@ -323,7 +369,9 @@ export default function Portfolio() {
                           {position.positionType}
                         </span>
                       </td>
-                      <td className="align-right">{position.quantity}</td>
+                      <td className="align-right">
+                        {Math.abs(position.quantity)}
+                      </td>
                       <td className="align-right">
                         {formatCurrency(position.entryPrice ?? 0)}
                       </td>
