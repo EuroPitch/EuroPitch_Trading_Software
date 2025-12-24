@@ -123,6 +123,26 @@ body {
   width: 100%;
 }
 
+.logout-button {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 0.5rem;
+}
+
+.logout-button:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ff6b6b;
+  transform: translateY(-1px);
+}
+
 /* MOBILE NAV */
 .menu-toggle {
   display: none;
@@ -178,6 +198,13 @@ body {
   .nav-link {
     padding: 0.5rem 0;
     font-size: 1.05rem;
+  }
+
+  .logout-button {
+    margin-left: 0;
+    margin-top: 0.5rem;
+    width: 100%;
+    text-align: center;
   }
 }
 
