@@ -18,11 +18,11 @@ export default function App() {
           {/* If authed -> /portfolio, else show Login */}
           <Route index element={<HomeRoute />} />
 
-          {/* Dashboard temporarily accessible without auth for preview */}
+          {/* Dashboard and Portfolio temporarily accessible without auth for preview */}
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="portfolio" element={<Portfolio />} />
 
           <Route element={<ProtectedRoute />}>
-            <Route path="portfolio" element={<Portfolio />} />
             <Route path="stocks" element={<StockMetrics />} />
           </Route>
 
