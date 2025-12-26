@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./Dashboard.css";
 import { supabase } from "../../supabaseClient";
@@ -11,6 +11,19 @@ type PortfolioSummary = {
   cashBalance: number;
   initialCapital: number;
   positionCount: number;
+};
+
+type TradingStats = {
+  totalTrades: number;
+  buyTrades: number;
+  sellTrades: number;
+  totalVolume: number;
+  averageTradeSize: number;
+  mostTradedStock: string;
+  mostTradedCount: number;
+  tradesToday: number;
+  tradesThisWeek: number;
+  totalNotional: number;
 };
 
 type Position = {
@@ -27,6 +40,10 @@ type Position = {
 export default function Dashboard() {
   const { session, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const priceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [priceMap, setPriceMap] = useState<Map<string, number>>(new Map());
+  const [initialCapital, setInitialCapital] = useState(100000);
   const [summary, setSummary] = useState<PortfolioSummary>({
     totalValue: 0,
     totalPnL: 0,
@@ -35,9 +52,20 @@ export default function Dashboard() {
     initialCapital: 100000,
     positionCount: 0,
   });
-  const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tradingStats, setTradingStats] = useState<TradingStats>({
+    totalTrades: 0,
+    buyTrades: 0,
+    sellTrades: 0,
+    totalVolume: 0,
+    averageTradeSize: 0,
+    mostTradedStock: "-",
+    mostTradedCount: 0,
+    tradesToday: 0,
+    tradesThisWeek: 0,
+    totalNotional: 0,
+  });
   const [societyName, setSocietyName] = useState<string>("Society");
 
   const handleLogout = async () => {
@@ -62,19 +90,123 @@ export default function Dashboard() {
     return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
 
-  const calculatePnL = (position: Position) => {
-    const marketValue = position.marketValue ?? 0;
-    const costBasis = Math.abs(position.costBasis ?? 0);
+  // Position-aware P&L calculation using current market price
+  const calculatePnL = (position: Position, currentPrice: number): number => {
+    if (currentPrice === 0 || position.entryPrice === 0 || position.quantity === 0) {
+      return 0;
+    }
 
-    if (position.quantity > 0) {
-      return marketValue - costBasis;
+    const quantity = Math.abs(position.quantity);
+
+    if (position.positionType === "LONG") {
+      // LONG: profit when currentPrice > entryPrice
+      return (currentPrice - position.entryPrice) * quantity;
     } else {
-      return costBasis - marketValue;
+      // SHORT: profit when currentPrice < entryPrice
+      return (position.entryPrice - currentPrice) * quantity;
     }
   };
 
+  // Fetch prices from API
+  const fetchPrices = async (symbols: string[]): Promise<Map<string, number>> => {
+    const priceMap = new Map<string, number>();
+
+    if (symbols.length === 0) return priceMap;
+
+    try {
+      const symbolParams = symbols.map((s) => `symbols=${s}`).join("&");
+      const priceResponse = await fetch(
+        `https://europitch-trading-prices.vercel.app/equities/quotes?${symbolParams}&chunk_size=50`
+      );
+
+      if (priceResponse.ok) {
+        const priceData = await priceResponse.json();
+
+        if (Array.isArray(priceData)) {
+          priceData.forEach((item: any) => {
+            const symbol = (item.symbol ?? item.ticker ?? "").toUpperCase().trim();
+            const price = Number(
+              item.price ?? item.last ?? item.close ?? item.current ?? 0
+            );
+            if (symbol && price > 0) {
+              priceMap.set(symbol, price);
+            }
+          });
+        } else {
+          Object.entries(priceData).forEach(([key, data]: [string, any]) => {
+            const symbol = key.toUpperCase().trim();
+            const price = Number(
+              data.price ?? data.last ?? data.close ?? data.current ?? 0
+            );
+            if (symbol && price > 0) {
+              priceMap.set(symbol, price);
+            }
+          });
+        }
+      }
+    } catch (priceError) {
+      console.error("Failed to fetch prices:", priceError);
+    }
+
+    return priceMap;
+  };
+
+  // Recalculate portfolio metrics from current positions and prices
+  useEffect(() => {
+    if (positions.length === 0) {
+      setSummary({
+        totalValue: initialCapital,
+        totalPnL: 0,
+        totalPnLPercent: 0,
+        cashBalance: initialCapital,
+        initialCapital,
+        positionCount: 0,
+      });
+      return;
+    }
+
+    // Calculate total market value and P&L using current prices
+    let totalMarketValue = 0;
+    let totalPnL = 0;
+
+    positions.forEach((pos) => {
+      const currentPrice = priceMap.get(pos.symbol.toUpperCase().trim()) ?? 0;
+
+      if (currentPrice > 0) {
+        const quantity = Math.abs(pos.quantity);
+        const marketValue = quantity * currentPrice;
+        totalMarketValue += marketValue;
+        totalPnL += calculatePnL(pos, currentPrice);
+      }
+    });
+
+    // Calculate cost basis
+    const totalCostBasis = positions.reduce(
+      (sum, pos) => sum + Math.abs(pos.costBasis),
+      0
+    );
+
+    const cashBalance = initialCapital - totalCostBasis;
+    const totalPortfolioValue = totalMarketValue + cashBalance;
+    const totalReturn = initialCapital === 0 ? 0 : (totalPnL / initialCapital) * 100;
+
+    setSummary({
+      totalValue: totalPortfolioValue,
+      totalPnL,
+      totalPnLPercent: totalReturn,
+      cashBalance,
+      initialCapital,
+      positionCount: positions.length,
+    });
+  }, [positions, priceMap, initialCapital]);
+
+  const calculatePnLForDisplay = (position: Position) => {
+    const currentPrice = priceMap.get(position.symbol.toUpperCase().trim()) ?? position.currentPrice;
+    return calculatePnL(position, currentPrice);
+  };
+
   const calculatePnLPercent = (position: Position) => {
-    const pnl = calculatePnL(position);
+    const pnl = calculatePnLForDisplay(position);
     const costBasis = Math.abs(position.costBasis ?? 0);
     if (costBasis === 0) return 0;
     return (pnl / costBasis) * 100;
@@ -91,25 +223,28 @@ export default function Dashboard() {
           return;
         }
 
-      // Fetch initial capital AND society_name from profiles table
-      let initialCapital = 100000;
-      let fetchedSocietyName = "Society";
+        // Fetch initial capital AND society_name from profiles table
+        let initialCapital = 100000;
+        let fetchedSocietyName = "Society";
 
-      try {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("society_name")  // Add society_name here
-          .eq("id", userId)
-          .single();
+        try {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("society_name, initial_capital")
+            .eq("id", userId)
+            .single();
 
-        
-        if (profileData?.society_name) {
-          fetchedSocietyName = profileData.society_name;
-          setSocietyName(fetchedSocietyName);  // Store in state
+          if (profileData?.initial_capital) {
+            initialCapital = Number(profileData.initial_capital);
+          }
+
+          if (profileData?.society_name) {
+            fetchedSocietyName = profileData.society_name;
+            setSocietyName(fetchedSocietyName);
+          }
+        } catch (err) {
+          console.warn("Could not fetch profile data, using defaults");
         }
-      } catch (err) {
-        console.warn("Could not fetch profile data, using defaults");
-      }
 
         // Fetch all trades for this user
         const { data: tradesData, error: fetchError } = await supabase
@@ -122,18 +257,19 @@ export default function Dashboard() {
           throw fetchError;
         }
 
-        console.log("Fetched trades:", tradesData?.length || 0);
-
-        // Aggregate trades with position netting - FIXED LOGIC
+        // Aggregate trades with position netting
         const positionsMap = new Map();
         const symbolNameMap = new Map();
 
+        console.log("Fetched trades:", tradesData?.length || 0);
+
         (tradesData ?? []).forEach((trade: any) => {
-          const symbol = trade.symbol ?? "";
+          const symbol = (trade.symbol ?? "").toUpperCase().trim();
           const side = (trade.side ?? "buy").toLowerCase();
           const quantity = Number(trade.quantity ?? 0);
           const price = Number(trade.price ?? 0);
           const notional = Number(trade.notional ?? quantity * price);
+
           const key = symbol;
 
           if (trade.name) {
@@ -145,21 +281,23 @@ export default function Dashboard() {
               symbol,
               quantity: 0,
               costBasis: 0,
+              entryPrice: 0,
+              positionType: "LONG",
             });
           }
 
           const position = positionsMap.get(key)!;
-          
-          // FIXED: Proper position netting logic
+
+          // Position netting logic
           if (side === "buy") {
             position.quantity += quantity;
             position.costBasis += notional;
           } else if (side === "sell") {
             const oldQuantity = position.quantity;
             const oldCostBasis = position.costBasis;
-            
+
             position.quantity -= quantity;
-            
+
             // If we had a long position and still do (or went flat)
             if (oldQuantity > 0 && position.quantity >= 0) {
               // Proportionally reduce cost basis
@@ -186,57 +324,32 @@ export default function Dashboard() {
 
         // Filter out flat positions
         const aggregatedPositions = Array.from(positionsMap.values()).filter(
-          (pos) => Math.abs(pos.quantity) > 0.0001 // Use small epsilon for floating point
+          (pos) => Math.abs(pos.quantity) > 0.0001
         );
 
+        // Store initial capital
+        setInitialCapital(initialCapital);
         console.log("Aggregated positions after filter:", aggregatedPositions);
 
         // Get unique symbols to fetch prices for
         const symbols = [...new Set(aggregatedPositions.map((p) => p.symbol))];
 
-        // Fetch current prices from API
-        let priceMap = new Map();
-        if (symbols.length > 0) {
-          try {
-            const symbolParams = symbols.map((s) => `symbols=${s}`).join("&");
-            const priceResponse = await fetch(
-              `https://europitch-trading-prices.vercel.app/equities/quotes?${symbolParams}&chunk_size=50`
-            );
+        // Fetch prices and update metrics
+        const updatePrices = async () => {
+          const prices = await fetchPrices(symbols);
+          setPriceMap(prices);
+        };
 
-            if (priceResponse.ok) {
-              const priceData = await priceResponse.json();
-              if (Array.isArray(priceData)) {
-                priceData.forEach((item: any) => {
-                  priceMap.set(
-                    item.symbol ?? item.ticker,
-                    Number(
-                      item.price ??
-                        item.last ??
-                        item.close ??
-                        item.current ??
-                        0
-                    )
-                  );
-                });
-              } else {
-                Object.entries(priceData).forEach(([symbol, data]: [string, any]) => {
-                  priceMap.set(
-                    symbol,
-                    Number(
-                      data.price ??
-                        data.last ??
-                        data.close ??
-                        data.current ??
-                        0
-                    )
-                  );
-                });
-              }
-            }
-          } catch (priceError) {
-            console.error("Failed to fetch prices:", priceError);
-          }
+        // Initial price fetch
+        await updatePrices();
+
+        // Clear any existing interval
+        if (priceIntervalRef.current) {
+          clearInterval(priceIntervalRef.current);
         }
+
+        // Refresh prices every 15 seconds
+        priceIntervalRef.current = setInterval(updatePrices, 15_000);
 
         // Build detailed positions array with all info
         const detailedPositions: Position[] = aggregatedPositions.map((pos) => {
@@ -261,36 +374,62 @@ export default function Dashboard() {
         });
 
         console.log("Detailed positions:", detailedPositions);
+        setPositions(detailedPositions);
 
-        // Calculate portfolio values
-        const computedEquityValue = detailedPositions.reduce((sum, pos) => {
-          return sum + pos.marketValue;
-        }, 0);
+        // Calculate trading statistics
+        const trades = tradesData ?? [];
+        const buyTrades = trades.filter((t: any) => (t.side ?? "buy").toLowerCase() === "buy").length;
+        const sellTrades = trades.filter((t: any) => (t.side ?? "sell").toLowerCase() === "sell").length;
+        const totalVolume = trades.reduce((sum: number, t: any) => sum + Number(t.quantity ?? 0), 0);
+        const totalNotional = trades.reduce((sum: number, t: any) => sum + Number(t.notional ?? (Number(t.quantity ?? 0) * Number(t.price ?? 0))), 0);
+        const averageTradeSize = trades.length > 0 ? totalNotional / trades.length : 0;
 
-        const computedTotalCost = aggregatedPositions.reduce((sum, pos) => {
-          return sum + Math.abs(pos.costBasis ?? 0);
-        }, 0);
-
-        const cashBalance = initialCapital - computedTotalCost;
-        const totalPortfolioValue = computedEquityValue + cashBalance;
-
-        const computedTotalPnL = detailedPositions.reduce((sum, pos) => {
-          return sum + calculatePnL(pos);
-        }, 0);
-
-        const computedTotalPnLPercent =
-          initialCapital === 0 ? 0 : (computedTotalPnL / initialCapital) * 100;
-
-        setSummary({
-          totalValue: totalPortfolioValue,
-          totalPnL: computedTotalPnL,
-          totalPnLPercent: computedTotalPnLPercent,
-          cashBalance: cashBalance,
-          initialCapital: initialCapital,
-          positionCount: aggregatedPositions.length,
+        // Find most traded stock
+        const stockCounts = new Map<string, number>();
+        trades.forEach((t: any) => {
+          const symbol = t.symbol ?? "";
+          if (symbol) {
+            stockCounts.set(symbol, (stockCounts.get(symbol) ?? 0) + 1);
+          }
+        });
+        let mostTradedStock = "-";
+        let mostTradedCount = 0;
+        stockCounts.forEach((count, symbol) => {
+          if (count > mostTradedCount) {
+            mostTradedCount = count;
+            mostTradedStock = symbol;
+          }
         });
 
-        setPositions(detailedPositions);
+        // Calculate trades today and this week
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+
+        const tradesToday = trades.filter((t: any) => {
+          const tradeDate = new Date(t.placed_at ?? t.filled_at ?? "");
+          return tradeDate >= today;
+        }).length;
+
+        const tradesThisWeek = trades.filter((t: any) => {
+          const tradeDate = new Date(t.placed_at ?? t.filled_at ?? "");
+          return tradeDate >= weekAgo;
+        }).length;
+
+        setTradingStats({
+          totalTrades: trades.length,
+          buyTrades,
+          sellTrades,
+          totalVolume,
+          averageTradeSize,
+          mostTradedStock,
+          mostTradedCount,
+          tradesToday,
+          tradesThisWeek,
+          totalNotional,
+        });
+
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err?.message ?? err);
         setError(err?.message ?? "An error occurred while fetching dashboard data");
@@ -300,6 +439,14 @@ export default function Dashboard() {
     };
 
     if (!authLoading) fetchDashboardData();
+
+    // Cleanup interval on unmount
+    return () => {
+      if (priceIntervalRef.current) {
+        clearInterval(priceIntervalRef.current);
+        priceIntervalRef.current = null;
+      }
+    };
   }, [session, authLoading]);
 
   const userEmail = session?.user?.email || localStorage.getItem("userEmail") || "User";
@@ -361,6 +508,78 @@ export default function Dashboard() {
             </div>
           </div>
 
+          <div className="stats-overview">
+            <h2>Trading Statistics</h2>
+            <div className="stats-table-container">
+              <table className="stats-table">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th className="align-right">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Total Trades</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.totalTrades}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Buy Orders</td>
+                    <td className="align-right">
+                      <span className="stat-value positive">{tradingStats.buyTrades}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Sell Orders</td>
+                    <td className="align-right">
+                      <span className="stat-value negative">{tradingStats.sellTrades}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Total Volume</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.totalVolume.toLocaleString()}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Total Notional</td>
+                    <td className="align-right">
+                      <span className="stat-value">{formatCurrency(tradingStats.totalNotional)}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Avg Trade Size</td>
+                    <td className="align-right">
+                      <span className="stat-value">{formatCurrency(tradingStats.averageTradeSize)}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Most Traded Stock</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.mostTradedStock}</span>
+                      {tradingStats.mostTradedCount > 0 && (
+                        <span className="stat-sublabel"> ({tradingStats.mostTradedCount} trades)</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Trades Today</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.tradesToday}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Trades This Week</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.tradesThisWeek}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
           {/* Positions Table Section */}
           {positions.length > 0 ? (
             <div className="positions-section">
@@ -382,7 +601,8 @@ export default function Dashboard() {
                   </thead>
                   <tbody>
                     {positions.map((position, idx) => {
-                      const pnl = calculatePnL(position);
+                      const currentPrice = priceMap.get(position.symbol.toUpperCase().trim()) ?? position.currentPrice;
+                      const pnl = calculatePnLForDisplay(position);
                       const pnlPercent = calculatePnLPercent(position);
 
                       return (
@@ -405,10 +625,10 @@ export default function Dashboard() {
                             {formatCurrency(position.entryPrice ?? 0)}
                           </td>
                           <td className="align-right">
-                            {formatCurrency(position.currentPrice ?? 0)}
+                            {formatCurrency(currentPrice)}
                           </td>
                           <td className="align-right">
-                            {formatCurrency(position.marketValue ?? 0)}
+                            {formatCurrency(Math.abs(position.quantity) * currentPrice)}
                           </td>
                           <td
                             className={`align-right ${

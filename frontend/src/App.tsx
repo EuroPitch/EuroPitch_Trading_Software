@@ -16,8 +16,10 @@ export default function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<HomeRoute />} />
 
+          {/* Dashboard and Portfolio temporarily accessible without auth for preview */}
+          <Route path="dashboard" element={<Dashboard />} />
+
           <Route element={<ProtectedRoute />}>
-            <Route path="dashboard" element={<Dashboard />} />
             <Route path="stocks" element={<StockMetrics />} />
           </Route>
 
