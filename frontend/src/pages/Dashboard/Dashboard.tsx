@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [societyName, setSocietyName] = useState<string>("Society");
 
   const handleLogout = async () => {
     try {
@@ -90,21 +91,25 @@ export default function Dashboard() {
           return;
         }
 
-        // Fetch initial capital from profiles table
-        let initialCapital = 100000;
-        try {
-          const { data: profileData } = await supabase
-            .from("profiles")
-            .select("initial_capital")
-            .eq("id", userId)
-            .single();
+      // Fetch initial capital AND society_name from profiles table
+      let initialCapital = 100000;
+      let fetchedSocietyName = "Society";
 
-          if (profileData?.initial_capital) {
-            initialCapital = Number(profileData.initial_capital);
-          }
-        } catch (err) {
-          console.warn("Could not fetch initial capital, using default €100k");
+      try {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("society_name")  // Add society_name here
+          .eq("id", userId)
+          .single();
+
+        
+        if (profileData?.society_name) {
+          fetchedSocietyName = profileData.society_name;
+          setSocietyName(fetchedSocietyName);  // Store in state
         }
+      } catch (err) {
+        console.warn("Could not fetch profile data, using defaults");
+      }
 
         // Fetch all trades for this user
         const { data: tradesData, error: fetchError } = await supabase
@@ -303,7 +308,7 @@ export default function Dashboard() {
     <div className="dashboard-container">
       <div className="dashboard-header">
         <div className="welcome-section">
-          <h1>{userEmail.split("@")[0]} Portfolio Dashboard</h1>
+          <h1>{societyName} Portfolio Dashboard</h1>
           <p className="welcome-subtitle">Here's an overview of your trading account</p>
         </div>
         <button onClick={handleLogout} className="dashboard-logout-button">
