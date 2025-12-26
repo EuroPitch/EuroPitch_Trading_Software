@@ -32,6 +32,15 @@ type Position = {
   costBasis: number;
   entryPrice: number;
   positionType: "LONG" | "SHORT";
+type Position = {
+  symbol: string;
+  name?: string;
+  quantity: number;
+  costBasis: number;
+  currentPrice: number;
+  marketValue: number;
+  positionType: string;
+  entryPrice: number;
 };
 
 export default function Dashboard() {
@@ -49,6 +58,7 @@ export default function Dashboard() {
     initialCapital: 100000,
     positionCount: 0,
   });
+  const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tradingStats, setTradingStats] = useState<TradingStats>({
@@ -63,6 +73,7 @@ export default function Dashboard() {
     tradesThisWeek: 0,
     totalNotional: 0,
   });
+  const [societyName, setSocietyName] = useState<string>("Society");
 
   const handleLogout = async () => {
     try {
@@ -197,11 +208,28 @@ export default function Dashboard() {
     });
   }, [positions, priceMap, initialCapital]);
 
+  const calculatePnL = (position: Position) => {
+    const marketValue = position.marketValue ?? 0;
+    const costBasis = Math.abs(position.costBasis ?? 0);
+
+    if (position.quantity > 0) {
+      return marketValue - costBasis;
+    } else {
+      return costBasis - marketValue;
+    }
+  };
+
+  const calculatePnLPercent = (position: Position) => {
+    const pnl = calculatePnL(position);
+    const costBasis = Math.abs(position.costBasis ?? 0);
+    if (costBasis === 0) return 0;
+    return (pnl / costBasis) * 100;
+  };
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
       setError(null);
-
       try {
         const userId = session?.user?.id;
         if (!userId) {
@@ -209,21 +237,25 @@ export default function Dashboard() {
           return;
         }
 
-        // Fetch initial capital from profiles table
-        let initialCapital = 100000;
-        try {
-          const { data: profileData } = await supabase
-            .from("profiles")
-            .select("initial_capital")
-            .eq("id", userId)
-            .single();
+      // Fetch initial capital AND society_name from profiles table
+      let initialCapital = 100000;
+      let fetchedSocietyName = "Society";
 
-          if (profileData?.initial_capital) {
-            initialCapital = Number(profileData.initial_capital);
-          }
-        } catch (err) {
-          console.warn("Could not fetch initial capital, using default €100k");
+      try {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("society_name")  // Add society_name here
+          .eq("id", userId)
+          .single();
+
+        
+        if (profileData?.society_name) {
+          fetchedSocietyName = profileData.society_name;
+          setSocietyName(fetchedSocietyName);  // Store in state
         }
+      } catch (err) {
+        console.warn("Could not fetch profile data, using defaults");
+      }
 
         // Fetch all trades for this user
         const { data: tradesData, error: fetchError } = await supabase
@@ -238,6 +270,11 @@ export default function Dashboard() {
 
         // Aggregate trades with position netting
         const positionsMap = new Map<string, Position>();
+        console.log("Fetched trades:", tradesData?.length || 0);
+
+        // Aggregate trades with position netting - FIXED LOGIC
+        const positionsMap = new Map();
+        const symbolNameMap = new Map();
 
         (tradesData ?? []).forEach((trade: any) => {
           const symbol = (trade.symbol ?? "").toUpperCase().trim();
@@ -248,6 +285,14 @@ export default function Dashboard() {
 
           if (!positionsMap.has(symbol)) {
             positionsMap.set(symbol, {
+          const key = symbol;
+
+          if (trade.name) {
+            symbolNameMap.set(symbol, trade.name);
+          }
+
+          if (!positionsMap.has(key)) {
+            positionsMap.set(key, {
               symbol,
               quantity: 0,
               costBasis: 0,
@@ -272,8 +317,16 @@ export default function Dashboard() {
               position.entryPrice = price;
               position.positionType = "SHORT";
             }
+          const position = positionsMap.get(key)!;
+          
+          // FIXED: Proper position netting logic
+          if (side === "buy") {
+            position.quantity += quantity;
+            position.costBasis += notional;
           } else if (side === "sell") {
             const oldQuantity = position.quantity;
+            const oldCostBasis = position.costBasis;
+            
             position.quantity -= quantity;
 
             if (oldQuantity > 0) {
@@ -295,19 +348,40 @@ export default function Dashboard() {
               // Opening or adding to SHORT position
               position.entryPrice = price;
               position.positionType = "SHORT";
+            
+            // If we had a long position and still do (or went flat)
+            if (oldQuantity > 0 && position.quantity >= 0) {
+              // Proportionally reduce cost basis
+              if (oldQuantity > 0) {
+                const avgCost = oldCostBasis / oldQuantity;
+                position.costBasis = position.quantity * avgCost;
+              } else {
+                position.costBasis = 0;
+              }
+            }
+            // If we went from long to short
+            else if (oldQuantity > 0 && position.quantity < 0) {
+              // Cost basis is now the short position value
               position.costBasis = Math.abs(position.quantity) * price;
+            }
+            // If we were already short, add to the short
+            else if (oldQuantity <= 0) {
+              position.costBasis += notional;
             }
           }
         });
 
+        console.log("Positions map before filter:", Array.from(positionsMap.values()));
+
         // Filter out flat positions
         const aggregatedPositions = Array.from(positionsMap.values()).filter(
-          (pos) => pos.quantity !== 0
+          (pos) => Math.abs(pos.quantity) > 0.0001 // Use small epsilon for floating point
         );
 
         // Store positions
         setPositions(aggregatedPositions);
         setInitialCapital(initialCapital);
+        console.log("Aggregated positions after filter:", aggregatedPositions);
 
         // Get unique symbols to fetch prices for
         const symbols = [...new Set(aggregatedPositions.map((p) => p.symbol))];
@@ -381,7 +455,103 @@ export default function Dashboard() {
           tradesToday,
           tradesThisWeek,
           totalNotional,
+        // Fetch current prices from API
+        let priceMap = new Map();
+        if (symbols.length > 0) {
+          try {
+            const symbolParams = symbols.map((s) => `symbols=${s}`).join("&");
+            const priceResponse = await fetch(
+              `https://europitch-trading-prices.vercel.app/equities/quotes?${symbolParams}&chunk_size=50`
+            );
+
+            if (priceResponse.ok) {
+              const priceData = await priceResponse.json();
+              if (Array.isArray(priceData)) {
+                priceData.forEach((item: any) => {
+                  priceMap.set(
+                    item.symbol ?? item.ticker,
+                    Number(
+                      item.price ??
+                        item.last ??
+                        item.close ??
+                        item.current ??
+                        0
+                    )
+                  );
+                });
+              } else {
+                Object.entries(priceData).forEach(([symbol, data]: [string, any]) => {
+                  priceMap.set(
+                    symbol,
+                    Number(
+                      data.price ??
+                        data.last ??
+                        data.close ??
+                        data.current ??
+                        0
+                    )
+                  );
+                });
+              }
+            }
+          } catch (priceError) {
+            console.error("Failed to fetch prices:", priceError);
+          }
+        }
+
+        // Build detailed positions array with all info
+        const detailedPositions: Position[] = aggregatedPositions.map((pos) => {
+          const priceFromMap = priceMap.get(pos.symbol);
+          const currentPrice =
+            priceFromMap ??
+            (pos.quantity !== 0 ? Math.abs(pos.costBasis) / Math.abs(pos.quantity) : 0);
+          const marketValue = Math.abs(pos.quantity) * currentPrice;
+          const entryPrice =
+            pos.quantity !== 0 ? Math.abs(pos.costBasis) / Math.abs(pos.quantity) : 0;
+
+          return {
+            symbol: pos.symbol,
+            name: symbolNameMap.get(pos.symbol) || pos.symbol,
+            quantity: pos.quantity,
+            costBasis: pos.costBasis,
+            currentPrice: currentPrice,
+            marketValue: marketValue,
+            entryPrice: entryPrice,
+            positionType: pos.quantity > 0 ? "LONG" : "SHORT",
+          };
         });
+
+        console.log("Detailed positions:", detailedPositions);
+
+        // Calculate portfolio values
+        const computedEquityValue = detailedPositions.reduce((sum, pos) => {
+          return sum + pos.marketValue;
+        }, 0);
+
+        const computedTotalCost = aggregatedPositions.reduce((sum, pos) => {
+          return sum + Math.abs(pos.costBasis ?? 0);
+        }, 0);
+
+        const cashBalance = initialCapital - computedTotalCost;
+        const totalPortfolioValue = computedEquityValue + cashBalance;
+
+        const computedTotalPnL = detailedPositions.reduce((sum, pos) => {
+          return sum + calculatePnL(pos);
+        }, 0);
+
+        const computedTotalPnLPercent =
+          initialCapital === 0 ? 0 : (computedTotalPnL / initialCapital) * 100;
+
+        setSummary({
+          totalValue: totalPortfolioValue,
+          totalPnL: computedTotalPnL,
+          totalPnLPercent: computedTotalPnLPercent,
+          cashBalance: cashBalance,
+          initialCapital: initialCapital,
+          positionCount: aggregatedPositions.length,
+        });
+
+        setPositions(detailedPositions);
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err?.message ?? err);
         setError(err?.message ?? "An error occurred while fetching dashboard data");
@@ -407,14 +577,10 @@ export default function Dashboard() {
     <div className="dashboard-container">
       <div className="dashboard-header">
         <div className="welcome-section">
-          <h1>Welcome back, {userEmail.split("@")[0]}!</h1>
+          <h1>{societyName} Portfolio Dashboard</h1>
           <p className="welcome-subtitle">Here's an overview of your trading account</p>
         </div>
-        <button
-          className="dashboard-logout-button"
-          onClick={handleLogout}
-          aria-label="Log out"
-        >
+        <button onClick={handleLogout} className="dashboard-logout-button">
           Log Out
         </button>
       </div>
@@ -428,39 +594,39 @@ export default function Dashboard() {
           <div className="dashboard-summary">
             <div className="summary-card main-card">
               <span className="summary-label">Portfolio Value</span>
-              <span className="summary-value large">
+              <div className="summary-value large">
                 {formatCurrency(summary.totalValue)}
-              </span>
-              <span
+              </div>
+              <div
                 className={`summary-change ${
                   summary.totalPnLPercent >= 0 ? "positive" : "negative"
                 }`}
               >
                 {formatPercent(summary.totalPnLPercent)}
-              </span>
+              </div>
             </div>
 
             <div className="summary-card">
               <span className="summary-label">Total P&L</span>
-              <span
+              <div
                 className={`summary-value ${
                   summary.totalPnL >= 0 ? "positive" : "negative"
                 }`}
               >
                 {formatCurrency(summary.totalPnL)}
-              </span>
+              </div>
             </div>
 
             <div className="summary-card">
               <span className="summary-label">Cash Balance</span>
-              <span className="summary-value">
+              <div className="summary-value">
                 {formatCurrency(summary.cashBalance)}
-              </span>
+              </div>
             </div>
 
             <div className="summary-card">
               <span className="summary-label">Active Positions</span>
-              <span className="summary-value">{summary.positionCount}</span>
+              <div className="summary-value">{summary.positionCount}</div>
             </div>
           </div>
 
@@ -536,23 +702,95 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
+          {/* Positions Table Section */}
+          {positions.length > 0 ? (
+            <div className="positions-section">
+              <h2 className="positions-title">Active Positions</h2>
+              <div className="positions-table-container">
+                <table className="positions-table">
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Name</th>
+                      <th>Position</th>
+                      <th className="align-right">Quantity</th>
+                      <th className="align-right">Entry Price</th>
+                      <th className="align-right">Current Price</th>
+                      <th className="align-right">Market Value</th>
+                      <th className="align-right">P&L ($)</th>
+                      <th className="align-right">P&L (%)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {positions.map((position, idx) => {
+                      const pnl = calculatePnL(position);
+                      const pnlPercent = calculatePnLPercent(position);
+
+                      return (
+                        <tr key={`${position.symbol}-${idx}`} className="position-row">
+                          <td className="symbol-cell">
+                            <strong>{position.symbol}</strong>
+                          </td>
+                          <td className="name-cell">{position.name}</td>
+                          <td>
+                            <span
+                              className={`position-badge ${position.positionType.toLowerCase()}`}
+                            >
+                              {position.positionType}
+                            </span>
+                          </td>
+                          <td className="align-right">
+                            {Math.abs(position.quantity).toFixed(2)}
+                          </td>
+                          <td className="align-right">
+                            {formatCurrency(position.entryPrice ?? 0)}
+                          </td>
+                          <td className="align-right">
+                            {formatCurrency(position.currentPrice ?? 0)}
+                          </td>
+                          <td className="align-right">
+                            {formatCurrency(position.marketValue ?? 0)}
+                          </td>
+                          <td
+                            className={`align-right ${
+                              pnl >= 0 ? "positive" : "negative"
+                            }`}
+                          >
+                            {formatCurrency(pnl)}
+                          </td>
+                          <td
+                            className={`align-right ${
+                              pnlPercent >= 0 ? "positive" : "negative"
+                            }`}
+                          >
+                            {formatPercent(pnlPercent)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="positions-section">
+              <h2 className="positions-title">Active Positions</h2>
+              <p style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                No active positions. Start trading to see your portfolio here.
+              </p>
+            </div>
+          )}
 
           <div className="dashboard-actions">
             <h2>Quick Actions</h2>
             <div className="action-cards">
-              <Link to="/portfolio" className="action-card">
-                <div className="action-icon">📊</div>
-                <h3>View Portfolio</h3>
-                <p>See all your positions and detailed performance</p>
-              </Link>
-
               <Link to="/stocks" className="action-card">
                 <div className="action-icon">📈</div>
                 <h3>Browse Stocks</h3>
                 <p>Explore and trade stocks</p>
               </Link>
 
-              <div className="action-card">
+              <div className="action-card" style={{ cursor: 'default' }}>
                 <div className="action-icon">💰</div>
                 <h3>Initial Capital</h3>
                 <p>{formatCurrency(summary.initialCapital)}</p>
@@ -564,4 +802,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
