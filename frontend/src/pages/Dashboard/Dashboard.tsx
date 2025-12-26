@@ -13,6 +13,19 @@ type PortfolioSummary = {
   positionCount: number;
 };
 
+type TradingStats = {
+  totalTrades: number;
+  buyTrades: number;
+  sellTrades: number;
+  totalVolume: number;
+  averageTradeSize: number;
+  mostTradedStock: string;
+  mostTradedCount: number;
+  tradesToday: number;
+  tradesThisWeek: number;
+  totalNotional: number;
+};
+
 export default function Dashboard() {
   const { session, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -26,6 +39,18 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tradingStats, setTradingStats] = useState<TradingStats>({
+    totalTrades: 0,
+    buyTrades: 0,
+    sellTrades: 0,
+    totalVolume: 0,
+    averageTradeSize: 0,
+    mostTradedStock: "-",
+    mostTradedCount: 0,
+    tradesToday: 0,
+    tradesThisWeek: 0,
+    totalNotional: 0,
+  });
 
   const handleLogout = async () => {
     try {
@@ -222,6 +247,60 @@ export default function Dashboard() {
           initialCapital: initialCapital,
           positionCount: aggregatedPositions.length,
         });
+
+        // Calculate trading statistics
+        const trades = tradesData ?? [];
+        const buyTrades = trades.filter((t: any) => (t.side ?? "buy").toLowerCase() === "buy").length;
+        const sellTrades = trades.filter((t: any) => (t.side ?? "sell").toLowerCase() === "sell").length;
+        const totalVolume = trades.reduce((sum: number, t: any) => sum + Number(t.quantity ?? 0), 0);
+        const totalNotional = trades.reduce((sum: number, t: any) => sum + Number(t.notional ?? (Number(t.quantity ?? 0) * Number(t.price ?? 0))), 0);
+        const averageTradeSize = trades.length > 0 ? totalNotional / trades.length : 0;
+
+        // Find most traded stock
+        const stockCounts = new Map<string, number>();
+        trades.forEach((t: any) => {
+          const symbol = t.symbol ?? "";
+          if (symbol) {
+            stockCounts.set(symbol, (stockCounts.get(symbol) ?? 0) + 1);
+          }
+        });
+        let mostTradedStock = "-";
+        let mostTradedCount = 0;
+        stockCounts.forEach((count, symbol) => {
+          if (count > mostTradedCount) {
+            mostTradedCount = count;
+            mostTradedStock = symbol;
+          }
+        });
+
+        // Calculate trades today and this week
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+
+        const tradesToday = trades.filter((t: any) => {
+          const tradeDate = new Date(t.placed_at ?? t.filled_at ?? "");
+          return tradeDate >= today;
+        }).length;
+
+        const tradesThisWeek = trades.filter((t: any) => {
+          const tradeDate = new Date(t.placed_at ?? t.filled_at ?? "");
+          return tradeDate >= weekAgo;
+        }).length;
+
+        setTradingStats({
+          totalTrades: trades.length,
+          buyTrades,
+          sellTrades,
+          totalVolume,
+          averageTradeSize,
+          mostTradedStock,
+          mostTradedCount,
+          tradesToday,
+          tradesThisWeek,
+          totalNotional,
+        });
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err?.message ?? err);
         setError(err?.message ?? "An error occurred while fetching dashboard data");
@@ -293,6 +372,79 @@ export default function Dashboard() {
             <div className="summary-card">
               <span className="summary-label">Active Positions</span>
               <span className="summary-value">{summary.positionCount}</span>
+            </div>
+          </div>
+
+          <div className="stats-overview">
+            <h2>Trading Statistics</h2>
+            <div className="stats-table-container">
+              <table className="stats-table">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th className="align-right">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Total Trades</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.totalTrades}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Buy Orders</td>
+                    <td className="align-right">
+                      <span className="stat-value positive">{tradingStats.buyTrades}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Sell Orders</td>
+                    <td className="align-right">
+                      <span className="stat-value negative">{tradingStats.sellTrades}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Total Volume</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.totalVolume.toLocaleString()}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Total Notional</td>
+                    <td className="align-right">
+                      <span className="stat-value">{formatCurrency(tradingStats.totalNotional)}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Avg Trade Size</td>
+                    <td className="align-right">
+                      <span className="stat-value">{formatCurrency(tradingStats.averageTradeSize)}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Most Traded Stock</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.mostTradedStock}</span>
+                      {tradingStats.mostTradedCount > 0 && (
+                        <span className="stat-sublabel"> ({tradingStats.mostTradedCount} trades)</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Trades Today</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.tradesToday}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Trades This Week</td>
+                    <td className="align-right">
+                      <span className="stat-value">{tradingStats.tradesThisWeek}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
