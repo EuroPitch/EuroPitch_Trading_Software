@@ -4,6 +4,7 @@ import "./Dashboard.css";
 import { supabase } from "../../supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 
+
 type PortfolioSummary = {
   totalValue: number;
   totalPnL: number;
@@ -12,6 +13,7 @@ type PortfolioSummary = {
   initialCapital: number;
   positionCount: number;
 };
+
 
 type TradingStats = {
   totalTrades: number;
@@ -26,6 +28,7 @@ type TradingStats = {
   totalNotional: number;
 };
 
+
 type Position = {
   symbol: string;
   name?: string;
@@ -36,6 +39,7 @@ type Position = {
   positionType: string;
   entryPrice: number;
 };
+
 
 export default function Dashboard() {
   const { session, loading: authLoading } = useAuth();
@@ -68,6 +72,7 @@ export default function Dashboard() {
   });
   const [societyName, setSocietyName] = useState<string>("Society");
 
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
@@ -79,6 +84,7 @@ export default function Dashboard() {
     }
   };
 
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-UK", {
       style: "currency",
@@ -86,9 +92,11 @@ export default function Dashboard() {
     }).format(value);
   };
 
+
   const formatPercent = (value: number) => {
     return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
+
 
   // Position-aware P&L calculation using current market price
   const calculatePnL = (position: Position, currentPrice: number): number => {
@@ -96,7 +104,9 @@ export default function Dashboard() {
       return 0;
     }
 
+
     const quantity = Math.abs(position.quantity);
+
 
     if (position.positionType === "LONG") {
       // LONG: profit when currentPrice > entryPrice
@@ -107,11 +117,14 @@ export default function Dashboard() {
     }
   };
 
+
   // Fetch prices from API
   const fetchPrices = async (symbols: string[]): Promise<Map<string, number>> => {
     const priceMap = new Map<string, number>();
 
+
     if (symbols.length === 0) return priceMap;
+
 
     try {
       const symbolParams = symbols.map((s) => `symbols=${s}`).join("&");
@@ -119,8 +132,10 @@ export default function Dashboard() {
         `https://europitch-trading-prices.vercel.app/equities/quotes?${symbolParams}&chunk_size=50`
       );
 
+
       if (priceResponse.ok) {
         const priceData = await priceResponse.json();
+
 
         if (Array.isArray(priceData)) {
           priceData.forEach((item: any) => {
@@ -148,62 +163,16 @@ export default function Dashboard() {
       console.error("Failed to fetch prices:", priceError);
     }
 
+
     return priceMap;
   };
 
-  // Recalculate portfolio metrics from current positions and prices
-  useEffect(() => {
-    if (positions.length === 0) {
-      setSummary({
-        totalValue: initialCapital,
-        totalPnL: 0,
-        totalPnLPercent: 0,
-        cashBalance: initialCapital,
-        initialCapital,
-        positionCount: 0,
-      });
-      return;
-    }
-
-    // Calculate total market value and P&L using current prices
-    let totalMarketValue = 0;
-    let totalPnL = 0;
-
-    positions.forEach((pos) => {
-      const currentPrice = priceMap.get(pos.symbol.toUpperCase().trim()) ?? 0;
-
-      if (currentPrice > 0) {
-        const quantity = Math.abs(pos.quantity);
-        const marketValue = quantity * currentPrice;
-        totalMarketValue += marketValue;
-        totalPnL += calculatePnL(pos, currentPrice);
-      }
-    });
-
-    // Calculate cost basis
-    const totalCostBasis = positions.reduce(
-      (sum, pos) => sum + Math.abs(pos.costBasis),
-      0
-    );
-
-    const cashBalance = initialCapital - totalCostBasis;
-    const totalPortfolioValue = totalMarketValue + cashBalance;
-    const totalReturn = initialCapital === 0 ? 0 : (totalPnL / initialCapital) * 100;
-
-    setSummary({
-      totalValue: totalPortfolioValue,
-      totalPnL,
-      totalPnLPercent: totalReturn,
-      cashBalance,
-      initialCapital,
-      positionCount: positions.length,
-    });
-  }, [positions, priceMap, initialCapital]);
 
   const calculatePnLForDisplay = (position: Position) => {
     const currentPrice = priceMap.get(position.symbol.toUpperCase().trim()) ?? position.currentPrice;
     return calculatePnL(position, currentPrice);
   };
+
 
   const calculatePnLPercent = (position: Position) => {
     const pnl = calculatePnLForDisplay(position);
@@ -211,6 +180,7 @@ export default function Dashboard() {
     if (costBasis === 0) return 0;
     return (pnl / costBasis) * 100;
   };
+
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -223,28 +193,39 @@ export default function Dashboard() {
           return;
         }
 
-        // Fetch initial capital AND society_name from profiles table
+
+        // Fetch initial capital, society_name, AND total_equity from profiles table
         let initialCapital = 100000;
         let fetchedSocietyName = "Society";
+        let totalEquity = 100000;
+
 
         try {
           const { data: profileData } = await supabase
             .from("profiles")
-            .select("society_name, initial_capital")
+            .select("society_name, initial_capital, total_equity")
             .eq("id", userId)
             .single();
+
 
           if (profileData?.initial_capital) {
             initialCapital = Number(profileData.initial_capital);
           }
 
+
           if (profileData?.society_name) {
             fetchedSocietyName = profileData.society_name;
             setSocietyName(fetchedSocietyName);
           }
+
+
+          if (profileData?.total_equity) {
+            totalEquity = Number(profileData.total_equity);
+          }
         } catch (err) {
           console.warn("Could not fetch profile data, using defaults");
         }
+
 
         // Fetch all trades for this user
         const { data: tradesData, error: fetchError } = await supabase
@@ -253,15 +234,19 @@ export default function Dashboard() {
           .eq("profile_id", userId)
           .order("placed_at", { ascending: true });
 
+
         if (fetchError) {
           throw fetchError;
         }
+
 
         // Aggregate trades with position netting
         const positionsMap = new Map();
         const symbolNameMap = new Map();
 
+
         console.log("Fetched trades:", tradesData?.length || 0);
+
 
         (tradesData ?? []).forEach((trade: any) => {
           const symbol = (trade.symbol ?? "").toUpperCase().trim();
@@ -270,11 +255,14 @@ export default function Dashboard() {
           const price = Number(trade.price ?? 0);
           const notional = Number(trade.notional ?? quantity * price);
 
+
           const key = symbol;
+
 
           if (trade.name) {
             symbolNameMap.set(symbol, trade.name);
           }
+
 
           if (!positionsMap.has(key)) {
             positionsMap.set(key, {
@@ -286,7 +274,9 @@ export default function Dashboard() {
             });
           }
 
+
           const position = positionsMap.get(key)!;
+
 
           // Position netting logic
           if (side === "buy") {
@@ -296,60 +286,70 @@ export default function Dashboard() {
             const oldQuantity = position.quantity;
             const oldCostBasis = position.costBasis;
 
+
             position.quantity -= quantity;
 
-            // If we had a long position and still do (or went flat)
+
             if (oldQuantity > 0 && position.quantity >= 0) {
-              // Proportionally reduce cost basis
               if (oldQuantity > 0) {
                 const avgCost = oldCostBasis / oldQuantity;
                 position.costBasis = position.quantity * avgCost;
               } else {
                 position.costBasis = 0;
               }
-            }
-            // If we went from long to short
-            else if (oldQuantity > 0 && position.quantity < 0) {
-              // Cost basis is now the short position value
+            } else if (oldQuantity > 0 && position.quantity < 0) {
               position.costBasis = Math.abs(position.quantity) * price;
-            }
-            // If we were already short, add to the short
-            else if (oldQuantity <= 0) {
+            } else if (oldQuantity <= 0) {
               position.costBasis += notional;
             }
           }
         });
 
+
         console.log("Positions map before filter:", Array.from(positionsMap.values()));
+
 
         // Filter out flat positions
         const aggregatedPositions = Array.from(positionsMap.values()).filter(
           (pos) => Math.abs(pos.quantity) > 0.0001
         );
 
+
         // Store initial capital
         setInitialCapital(initialCapital);
         console.log("Aggregated positions after filter:", aggregatedPositions);
 
+
         // Get unique symbols to fetch prices for
         const symbols = [...new Set(aggregatedPositions.map((p) => p.symbol))];
 
-        // Fetch prices and update metrics
+
+        // Use ref to store current symbols so interval can access them
+        const symbolsRef = { current: symbols };
+
+
+        // Update prices function
         const updatePrices = async () => {
-          const prices = await fetchPrices(symbols);
+          const prices = await fetchPrices(symbolsRef.current);
           setPriceMap(prices);
         };
 
+
         // Initial price fetch
         await updatePrices();
+
 
         // Clear any existing interval
         if (priceIntervalRef.current) {
           clearInterval(priceIntervalRef.current);
         }
 
-        // Refresh prices every 15 seconds
-        priceIntervalRef.current = setInterval(updatePrices, 15_000);
+
+        // Refresh prices every 15 seconds with fresh symbols
+        priceIntervalRef.current = setInterval(() => {
+          updatePrices();
+        }, 15_000);
+
 
         // Build detailed positions array with all info
         const detailedPositions: Position[] = aggregatedPositions.map((pos) => {
@@ -360,6 +360,7 @@ export default function Dashboard() {
           const marketValue = Math.abs(pos.quantity) * currentPrice;
           const entryPrice =
             pos.quantity !== 0 ? Math.abs(pos.costBasis) / Math.abs(pos.quantity) : 0;
+
 
           return {
             symbol: pos.symbol,
@@ -373,8 +374,40 @@ export default function Dashboard() {
           };
         });
 
+
         console.log("Detailed positions:", detailedPositions);
         setPositions(detailedPositions);
+
+
+        // Calculate total P&L from positions
+        let totalPnL = 0;
+        detailedPositions.forEach((pos) => {
+          const currentPrice = priceMap.get(pos.symbol.toUpperCase().trim()) ?? pos.currentPrice;
+          totalPnL += calculatePnL(pos, currentPrice);
+        });
+
+
+        // Calculate cost basis for cash balance
+        const totalCostBasis = detailedPositions.reduce(
+          (sum, pos) => sum + Math.abs(pos.costBasis),
+          0
+        );
+        const cashBalance = initialCapital - totalCostBasis;
+
+
+        // Use total_equity from database as the portfolio value
+        const totalReturn = initialCapital === 0 ? 0 : ((totalEquity - initialCapital) / initialCapital) * 100;
+
+
+        setSummary({
+          totalValue: totalEquity, // Use DB value instead of calculating
+          totalPnL,
+          totalPnLPercent: totalReturn,
+          cashBalance,
+          initialCapital,
+          positionCount: detailedPositions.length,
+        });
+
 
         // Calculate trading statistics
         const trades = tradesData ?? [];
@@ -383,6 +416,7 @@ export default function Dashboard() {
         const totalVolume = trades.reduce((sum: number, t: any) => sum + Number(t.quantity ?? 0), 0);
         const totalNotional = trades.reduce((sum: number, t: any) => sum + Number(t.notional ?? (Number(t.quantity ?? 0) * Number(t.price ?? 0))), 0);
         const averageTradeSize = trades.length > 0 ? totalNotional / trades.length : 0;
+
 
         // Find most traded stock
         const stockCounts = new Map<string, number>();
@@ -401,21 +435,25 @@ export default function Dashboard() {
           }
         });
 
+
         // Calculate trades today and this week
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekAgo = new Date(today);
         weekAgo.setDate(weekAgo.getDate() - 7);
 
+
         const tradesToday = trades.filter((t: any) => {
           const tradeDate = new Date(t.placed_at ?? t.filled_at ?? "");
           return tradeDate >= today;
         }).length;
 
+
         const tradesThisWeek = trades.filter((t: any) => {
           const tradeDate = new Date(t.placed_at ?? t.filled_at ?? "");
           return tradeDate >= weekAgo;
         }).length;
+
 
         setTradingStats({
           totalTrades: trades.length,
@@ -430,6 +468,7 @@ export default function Dashboard() {
           totalNotional,
         });
 
+
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err?.message ?? err);
         setError(err?.message ?? "An error occurred while fetching dashboard data");
@@ -438,7 +477,9 @@ export default function Dashboard() {
       }
     };
 
+
     if (!authLoading) fetchDashboardData();
+
 
     // Cleanup interval on unmount
     return () => {
@@ -449,7 +490,9 @@ export default function Dashboard() {
     };
   }, [session, authLoading]);
 
+
   const userEmail = session?.user?.email || localStorage.getItem("userEmail") || "User";
+
 
   return (
     <div className="dashboard-container">
@@ -462,6 +505,7 @@ export default function Dashboard() {
           Log Out
         </button>
       </div>
+
 
       {loading ? (
         <div className="loading">Loading dashboard...</div>
@@ -484,6 +528,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+
             <div className="summary-card">
               <span className="summary-label">Total P&L</span>
               <div
@@ -495,6 +540,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+
             <div className="summary-card">
               <span className="summary-label">Cash Balance</span>
               <div className="summary-value">
@@ -502,11 +548,96 @@ export default function Dashboard() {
               </div>
             </div>
 
+
             <div className="summary-card">
               <span className="summary-label">Active Positions</span>
               <div className="summary-value">{summary.positionCount}</div>
             </div>
           </div>
+
+
+          {/* Positions Table Section */}
+          {positions.length > 0 ? (
+            <div className="positions-section">
+              <h2 className="positions-title">Active Positions</h2>
+              <div className="positions-table-container">
+                <table className="positions-table">
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Name</th>
+                      <th>Position</th>
+                      <th className="align-right">Quantity</th>
+                      <th className="align-right">Entry Price</th>
+                      <th className="align-right">Current Price</th>
+                      <th className="align-right">Market Value</th>
+                      <th className="align-right">P&L ($)</th>
+                      <th className="align-right">P&L (%)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {positions.map((position, idx) => {
+                      const currentPrice = priceMap.get(position.symbol.toUpperCase().trim()) ?? position.currentPrice;
+                      const pnl = calculatePnLForDisplay(position);
+                      const pnlPercent = calculatePnLPercent(position);
+
+
+                      return (
+                        <tr key={`${position.symbol}-${idx}`} className="position-row">
+                          <td className="symbol-cell">
+                            <strong>{position.symbol}</strong>
+                          </td>
+                          <td className="name-cell">{position.name}</td>
+                          <td>
+                            <span
+                              className={`position-badge ${position.positionType.toLowerCase()}`}
+                            >
+                              {position.positionType}
+                            </span>
+                          </td>
+                          <td className="align-right">
+                            {Math.abs(position.quantity).toFixed(2)}
+                          </td>
+                          <td className="align-right">
+                            {formatCurrency(position.entryPrice ?? 0)}
+                          </td>
+                          <td className="align-right">
+                            {formatCurrency(currentPrice)}
+                          </td>
+                          <td className="align-right">
+                            {formatCurrency(Math.abs(position.quantity) * currentPrice)}
+                          </td>
+                          <td
+                            className={`align-right ${
+                              pnl >= 0 ? "positive" : "negative"
+                            }`}
+                          >
+                            {formatCurrency(pnl)}
+                          </td>
+                          <td
+                            className={`align-right ${
+                              pnlPercent >= 0 ? "positive" : "negative"
+                            }`}
+                          >
+                            {formatPercent(pnlPercent)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="positions-section">
+              <h2 className="positions-title">Active Positions</h2>
+              <p style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                No active positions. Start trading to see your portfolio here.
+              </p>
+            </div>
+          )}
+
+
 
           <div className="stats-overview">
             <h2>Trading Statistics</h2>
@@ -580,86 +711,6 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
-          {/* Positions Table Section */}
-          {positions.length > 0 ? (
-            <div className="positions-section">
-              <h2 className="positions-title">Active Positions</h2>
-              <div className="positions-table-container">
-                <table className="positions-table">
-                  <thead>
-                    <tr>
-                      <th>Symbol</th>
-                      <th>Name</th>
-                      <th>Position</th>
-                      <th className="align-right">Quantity</th>
-                      <th className="align-right">Entry Price</th>
-                      <th className="align-right">Current Price</th>
-                      <th className="align-right">Market Value</th>
-                      <th className="align-right">P&L ($)</th>
-                      <th className="align-right">P&L (%)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {positions.map((position, idx) => {
-                      const currentPrice = priceMap.get(position.symbol.toUpperCase().trim()) ?? position.currentPrice;
-                      const pnl = calculatePnLForDisplay(position);
-                      const pnlPercent = calculatePnLPercent(position);
-
-                      return (
-                        <tr key={`${position.symbol}-${idx}`} className="position-row">
-                          <td className="symbol-cell">
-                            <strong>{position.symbol}</strong>
-                          </td>
-                          <td className="name-cell">{position.name}</td>
-                          <td>
-                            <span
-                              className={`position-badge ${position.positionType.toLowerCase()}`}
-                            >
-                              {position.positionType}
-                            </span>
-                          </td>
-                          <td className="align-right">
-                            {Math.abs(position.quantity).toFixed(2)}
-                          </td>
-                          <td className="align-right">
-                            {formatCurrency(position.entryPrice ?? 0)}
-                          </td>
-                          <td className="align-right">
-                            {formatCurrency(currentPrice)}
-                          </td>
-                          <td className="align-right">
-                            {formatCurrency(Math.abs(position.quantity) * currentPrice)}
-                          </td>
-                          <td
-                            className={`align-right ${
-                              pnl >= 0 ? "positive" : "negative"
-                            }`}
-                          >
-                            {formatCurrency(pnl)}
-                          </td>
-                          <td
-                            className={`align-right ${
-                              pnlPercent >= 0 ? "positive" : "negative"
-                            }`}
-                          >
-                            {formatPercent(pnlPercent)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="positions-section">
-              <h2 className="positions-title">Active Positions</h2>
-              <p style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-                No active positions. Start trading to see your portfolio here.
-              </p>
-            </div>
-          )}
-
           <div className="dashboard-actions">
             <h2>Quick Actions</h2>
             <div className="action-cards">
@@ -668,6 +719,7 @@ export default function Dashboard() {
                 <h3>Browse Stocks</h3>
                 <p>Explore and trade stocks</p>
               </Link>
+
 
               <div className="action-card" style={{ cursor: 'default' }}>
                 <div className="action-icon">💰</div>
